@@ -1421,6 +1421,13 @@ public class FmService extends Service implements FmRecorder.OnRecorderStateChan
                     }
                 }
             }
+            // Audio route just changed (device was added/removed, a patch
+            // was created/destroyed, BT/WFD came online, etc). The system
+            // STREAM_MUSIC level is per-device, so re-sync the codec's
+            // DAC1 Playback Volume with whatever the new current device's
+            // level is — otherwise FM stays at the previous device's vol
+            // until the user nudges the slider.
+            forwardFmVolumeToHal();
         }
 
         /**
@@ -1751,6 +1758,18 @@ public class FmService extends Service implements FmRecorder.OnRecorderStateChan
             // DAC1 Playback Volume reflects the system volume immediately;
             // mVolumeReceiver keeps it in sync on subsequent changes.
             forwardFmVolumeToHal();
+            // AudioFlinger picks the actual output device asynchronously a
+            // few ms after the AudioTrack is created. Re-fire the volume
+            // sync once the route has settled so getStreamVolume() reports
+            // the value for the right device — otherwise the first read
+            // returns the previous (often quieter) device's level and the
+            // user has to nudge the slider to get to the system level.
+            new Handler(Looper.getMainLooper()).postDelayed(new Runnable() {
+                @Override
+                public void run() {
+                    forwardFmVolumeToHal();
+                }
+            }, 500);
         } else {
             releaseAudioPatch();
             stopRender();

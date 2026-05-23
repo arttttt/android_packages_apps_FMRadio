@@ -1286,6 +1286,7 @@ public class FmService extends Service implements FmRecorder.OnRecorderStateChan
         registerFmBroadcastReceiver();
         registerSdcardReceiver();
         registerAudioPortUpdateListener();
+        registerVolumeChangedReceiver();
 
         HandlerThread handlerThread = new HandlerThread("FmRadioServiceThread");
         handlerThread.start();
@@ -1459,6 +1460,60 @@ public class FmService extends Service implements FmRecorder.OnRecorderStateChan
         }
     }
 
+    // Mirrors AudioManager.VOLUME_CHANGED_ACTION / EXTRA_VOLUME_STREAM_TYPE
+    // (both hidden in API 25). FM audio plays as a hardware codec-internal
+    // bypass (BCM4354 -> AIF4 -> DAC1 -> speaker) and never reaches the
+    // AudioFlinger stream mixer, so the per-stream volume callback in the
+    // audio HAL never sees the system volume keys. Forward STREAM_MUSIC
+    // changes into setParameters("fm_volume=<float>") which the in-tree
+    // tinyhal turns into a DAC1 Playback Volume write — see
+    // audio_hw.c::adev_set_parameters() and the "fm_volume" named stream
+    // in audio.mocha.xml.
+    private static final String VOLUME_CHANGED_ACTION =
+            "android.media.VOLUME_CHANGED_ACTION";
+    private static final String EXTRA_VOLUME_STREAM_TYPE =
+            "android.media.EXTRA_VOLUME_STREAM_TYPE";
+    private BroadcastReceiver mVolumeReceiver = null;
+
+    private void registerVolumeChangedReceiver() {
+        if (mVolumeReceiver != null) {
+            return;
+        }
+        mVolumeReceiver = new BroadcastReceiver() {
+            @Override
+            public void onReceive(Context context, Intent intent) {
+                if (!VOLUME_CHANGED_ACTION.equals(intent.getAction())) {
+                    return;
+                }
+                int stream = intent.getIntExtra(EXTRA_VOLUME_STREAM_TYPE, -1);
+                if (stream != AudioManager.STREAM_MUSIC) {
+                    return;
+                }
+                forwardFmVolumeToHal();
+            }
+        };
+        IntentFilter filter = new IntentFilter(VOLUME_CHANGED_ACTION);
+        registerReceiver(mVolumeReceiver, filter);
+    }
+
+    private void unregisterVolumeChangedReceiver() {
+        if (mVolumeReceiver != null) {
+            unregisterReceiver(mVolumeReceiver);
+            mVolumeReceiver = null;
+        }
+    }
+
+    private void forwardFmVolumeToHal() {
+        if (mAudioManager == null) {
+            return;
+        }
+        int max = mAudioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
+        int cur = mAudioManager.getStreamVolume(AudioManager.STREAM_MUSIC);
+        float vol = max > 0 ? (float) cur / (float) max : 0.0f;
+        mAudioManager.setParameters("fm_volume=" + vol);
+        Log.d(TAG, "forwardFmVolumeToHal " + cur + "/" + max + " = " + vol);
+    }
+
     @Override
     public void onDestroy() {
         mAudioManager.setParameters("AudioFmPreStop=1");
@@ -1468,6 +1523,7 @@ public class FmService extends Service implements FmRecorder.OnRecorderStateChan
             stopRdsThread();
         }
         unregisterFmBroadcastReceiver();
+        unregisterVolumeChangedReceiver();
         unregisterSdcardListener();
         abandonAudioFocus();
         exitFm();
@@ -1689,6 +1745,12 @@ public class FmService extends Service implements FmRecorder.OnRecorderStateChan
 
             startAudioTrack();
             startPatchOrRender();
+            // FM HW path bypasses the AudioFlinger stream mixer so the
+            // per-stream out_set_volume() callback is never invoked for FM.
+            // Push the current STREAM_MUSIC level into the HAL on startup so
+            // DAC1 Playback Volume reflects the system volume immediately;
+            // mVolumeReceiver keeps it in sync on subsequent changes.
+            forwardFmVolumeToHal();
         } else {
             releaseAudioPatch();
             stopRender();

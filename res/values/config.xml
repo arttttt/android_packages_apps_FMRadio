@@ -15,5 +15,5 @@
 -->
 
 <resources xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
-    <bool name="config_useSoftwareRenderingForAudio" translatable="false">true</bool>
+    <bool name="config_useSoftwareRenderingForAudio" translatable="false">false</bool>
 </resources>

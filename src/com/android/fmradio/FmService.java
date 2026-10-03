@@ -33,12 +33,14 @@ import android.content.res.Configuration;
 import android.database.Cursor;
 import android.graphics.Bitmap;
 import android.media.AudioDevicePort;
+import android.media.AudioDeviceInfo;
 import android.media.AudioDevicePortConfig;
 import android.media.AudioFormat;
+import android.media.AudioGain;
+import android.media.AudioGainConfig;
 import android.media.AudioManager;
 import android.media.AudioManager.OnAudioFocusChangeListener;
 import android.media.AudioManager.OnAudioPortUpdateListener;
-import android.media.AudioMixPort;
 import android.media.AudioPatch;
 import android.media.AudioPort;
 import android.media.AudioPortConfig;
@@ -456,6 +458,8 @@ public class FmService extends Service implements FmRecorder.OnRecorderStateChan
 
     AudioDevicePort mAudioSource = null;
     AudioDevicePort mAudioSink = null;
+    // The output device type the patch plays FM on, 0 while there is none
+    private int mAudioSinkType = 0;
 
     private boolean isRendering() {
         return mIsRender;
@@ -1325,6 +1329,22 @@ public class FmService extends Service implements FmRecorder.OnRecorderStateChan
                 SAMPLE_RATE, CHANNEL_CONFIG, AUDIO_FORMAT, RECORD_BUF_SIZE, AudioTrack.MODE_STREAM);
     }
 
+    // The FM tuner, or the output device of that type
+    private AudioDevicePort findDevicePort(int type) {
+        ArrayList<AudioPort> ports = new ArrayList<AudioPort>();
+        mAudioManager.listAudioPorts(ports);
+        for (AudioPort port : ports) {
+            if (port instanceof AudioDevicePort && ((AudioDevicePort) port).type() == type) {
+                return (AudioDevicePort) port;
+            }
+        }
+        return null;
+    }
+
+    // FM plays as an audio patch from the tuner to where music plays, if
+    // the codec can take it there: the speaker or wired headphones. The
+    // patch stays inside the codec, so it carries no AudioTrack and its
+    // volume is the tuner port's gain (see forwardFmVolumeToHal).
     private synchronized int createAudioPatch() {
         Log.d(TAG, "createAudioPatch");
         int status = AudioManager.SUCCESS;
@@ -1333,32 +1353,28 @@ public class FmService extends Service implements FmRecorder.OnRecorderStateChan
             return status;
         }
 
-        mAudioSource = null;
-        mAudioSink = null;
-        ArrayList<AudioPort> ports = new ArrayList<AudioPort>();
-        mAudioManager.listAudioPorts(ports);
-        for (AudioPort port : ports) {
-            if (port instanceof AudioDevicePort) {
-                int type = ((AudioDevicePort) port).type();
-                String name = AudioSystem.getOutputDeviceName(type);
-                if (type == AudioSystem.DEVICE_IN_FM_TUNER) {
-                    mAudioSource = (AudioDevicePort) port;
-                } else if (type == AudioSystem.DEVICE_OUT_WIRED_HEADSET ||
-                        type == AudioSystem.DEVICE_OUT_WIRED_HEADPHONE) {
-                    mAudioSink = (AudioDevicePort) port;
-                }
-            }
+        int sinkType = fmSinkType();
+        mAudioSource = findDevicePort(AudioSystem.DEVICE_IN_FM_TUNER);
+        mAudioSink = sinkType != 0 ? findDevicePort(sinkType) : null;
+        if (mAudioSource == null || mAudioSink == null) {
+            Log.w(TAG, "createAudioPatch: no port for the tuner or device 0x"
+                    + Integer.toHexString(sinkType));
+            mAudioSource = null;
+            mAudioSink = null;
+            return AudioManager.ERROR;
         }
-        if (mAudioSource != null && mAudioSink != null) {
-            AudioDevicePortConfig sourceConfig = (AudioDevicePortConfig) mAudioSource
-                    .activeConfig();
-            AudioDevicePortConfig sinkConfig = (AudioDevicePortConfig) mAudioSink.activeConfig();
-            AudioPatch[] audioPatchArray = new AudioPatch[] {null};
-            status = mAudioManager.createAudioPatch(audioPatchArray,
-                    new AudioPortConfig[] {sourceConfig},
-                    new AudioPortConfig[] {sinkConfig});
-            mAudioPatch = audioPatchArray[0];
-        }
+
+        AudioDevicePortConfig sourceConfig = (AudioDevicePortConfig) mAudioSource
+                .activeConfig();
+        AudioDevicePortConfig sinkConfig = (AudioDevicePortConfig) mAudioSink.activeConfig();
+        AudioPatch[] audioPatchArray = new AudioPatch[] {null};
+        status = mAudioManager.createAudioPatch(audioPatchArray,
+                new AudioPortConfig[] {sourceConfig},
+                new AudioPortConfig[] {sinkConfig});
+        mAudioPatch = audioPatchArray[0];
+        mAudioSinkType = (status == AudioManager.SUCCESS && mAudioPatch != null) ? sinkType : 0;
+        Log.d(TAG, "createAudioPatch to device 0x" + Integer.toHexString(sinkType)
+                + ": " + status);
         return status;
     }
 
@@ -1371,7 +1387,8 @@ public class FmService extends Service implements FmRecorder.OnRecorderStateChan
          */
         @Override
         public void onAudioPortListUpdate(AudioPort[] portList) {
-            // Ingore audio port update
+            // A device came or went: music may have moved with it
+            onAudioRouteChanged();
         }
 
         /**
@@ -1381,52 +1398,52 @@ public class FmService extends Service implements FmRecorder.OnRecorderStateChan
          */
         @Override
         public void onAudioPatchListUpdate(AudioPatch[] patchList) {
+            onAudioRouteChanged();
+        }
+
+        private void onAudioRouteChanged() {
             if (mPowerStatus != POWER_UP) {
-                Log.d(TAG, "onAudioPatchListUpdate, not power up");
+                Log.d(TAG, "onAudioRouteChanged, not power up");
                 return;
             }
 
             if (!mIsAudioFocusHeld) {
-                Log.d(TAG, "onAudioPatchListUpdate no audio focus");
+                Log.d(TAG, "onAudioRouteChanged, no audio focus");
                 return;
             }
 
+            // Music moved: follow it, with a new patch if the codec can
+            // play FM there, else (BT, recording) through the render
             if (mAudioPatch != null) {
-                ArrayList<AudioPatch> patches = new ArrayList<AudioPatch>();
-                mAudioManager.listAudioPatches(patches);
-                // When BT or WFD is connected, native will remove the patch (mixer -> device).
-                // Need to recreate AudioRecord and AudioTrack for this case.
-                if (isPatchMixerToDeviceRemoved(patches)) {
-                    Log.d(TAG, "onAudioPatchListUpdate reinit for BT or WFD connected");
-                    startRender();
-                    return;
-                }
-                if (isPatchMixerToEarphone(patches)) {
-                    stopRender();
-                } else {
+                if (!canPlayAsPatch()) {
+                    Log.d(TAG, "onAudioRouteChanged: patch to render");
                     releaseAudioPatch();
                     startRender();
+                } else if (fmSinkType() != mAudioSinkType) {
+                    Log.d(TAG, "onAudioRouteChanged: patch to another device");
+                    releaseAudioPatch();
+                    if (createAudioPatch() != AudioManager.SUCCESS) {
+                        Log.d(TAG, "onAudioRouteChanged: fallback as createAudioPatch failed");
+                        startRender();
+                    }
                 }
             } else if (mIsRender) {
-                ArrayList<AudioPatch> patches = new ArrayList<AudioPatch>();
-                mAudioManager.listAudioPatches(patches);
-                if (isPatchMixerToEarphone(patches)) {
+                if (canPlayAsPatch()) {
                     int status;
                     stopAudioTrack();
                     stopRender();
                     status = createAudioPatch();
                     if (status != AudioManager.SUCCESS){
-                       Log.d(TAG, "onAudioPatchListUpdate: fallback as createAudioPatch failed");
+                       Log.d(TAG, "onAudioRouteChanged: fallback as createAudioPatch failed");
                        startRender();
                     }
                 }
             }
             // Audio route just changed (device was added/removed, a patch
             // was created/destroyed, BT/WFD came online, etc). The system
-            // STREAM_MUSIC level is per-device, so re-sync the codec's
-            // DAC1 Playback Volume with whatever the new current device's
-            // level is — otherwise FM stays at the previous device's vol
-            // until the user nudges the slider.
+            // STREAM_MUSIC level is per-device, so re-sync FM's gain with
+            // the new current device's level, and with whether FM now
+            // plays as a patch or through the render.
             forwardFmVolumeToHal();
         }
 
@@ -1447,6 +1464,7 @@ public class FmService extends Service implements FmRecorder.OnRecorderStateChan
         }
         mAudioSource = null;
         mAudioSink = null;
+        mAudioSinkType = 0;
     }
 
     private void registerFmBroadcastReceiver() {
@@ -1468,14 +1486,11 @@ public class FmService extends Service implements FmRecorder.OnRecorderStateChan
     }
 
     // Mirrors AudioManager.VOLUME_CHANGED_ACTION / EXTRA_VOLUME_STREAM_TYPE
-    // (both hidden in API 25). FM audio plays as a hardware codec-internal
-    // bypass (BCM4354 -> AIF4 -> DAC1 -> speaker) and never reaches the
-    // AudioFlinger stream mixer, so the per-stream volume callback in the
-    // audio HAL never sees the system volume keys. Forward STREAM_MUSIC
-    // changes into setParameters("fm_volume=<float>") which the in-tree
-    // tinyhal turns into a DAC1 Playback Volume write — see
-    // audio_hw.c::adev_set_parameters() and the "fm_volume" named stream
-    // in audio.mocha.xml.
+    // (both hidden). FM played as a patch stays inside the codec (BCM4354 ->
+    // AIF4 -> DAC1 -> speaker or headphones) and never reaches AudioFlinger's
+    // mixer, and AudioPolicy puts no stream volume on such a patch. Music's
+    // volume is forwarded instead as the gain of the tuner port, which the
+    // audio HAL sets on DAC1 (set_audio_port_config).
     private static final String VOLUME_CHANGED_ACTION =
             "android.media.VOLUME_CHANGED_ACTION";
     private static final String EXTRA_VOLUME_STREAM_TYPE =
@@ -1510,15 +1525,53 @@ public class FmService extends Service implements FmRecorder.OnRecorderStateChan
         }
     }
 
+    // The output device types FM plays on as a patch, as AudioDeviceInfo
+    // has them for the volume curves
+    private static int deviceInfoType(int deviceType) {
+        switch (deviceType) {
+            case AudioSystem.DEVICE_OUT_SPEAKER:
+                return AudioDeviceInfo.TYPE_BUILTIN_SPEAKER;
+            case AudioSystem.DEVICE_OUT_WIRED_HEADSET:
+                return AudioDeviceInfo.TYPE_WIRED_HEADSET;
+            case AudioSystem.DEVICE_OUT_WIRED_HEADPHONE:
+                return AudioDeviceInfo.TYPE_WIRED_HEADPHONES;
+            default:
+                return AudioDeviceInfo.TYPE_UNKNOWN;
+        }
+    }
+
+    // FM's gain on the tuner port: as a patch, music's volume in dB on the
+    // patch's device, the same curve music plays at; the port's minimum,
+    // below what the codec can attenuate, mutes. Through the render the
+    // AudioTrack carries music's volume, so the tuner is left at 0 dB.
     private void forwardFmVolumeToHal() {
         if (mAudioManager == null) {
             return;
         }
-        int max = mAudioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
-        int cur = mAudioManager.getStreamVolume(AudioManager.STREAM_MUSIC);
-        float vol = max > 0 ? (float) cur / (float) max : 0.0f;
-        mAudioManager.setParameters("fm_volume=" + vol);
-        Log.d(TAG, "forwardFmVolumeToHal " + cur + "/" + max + " = " + vol);
+        AudioDevicePort tuner = findDevicePort(AudioSystem.DEVICE_IN_FM_TUNER);
+        if (tuner == null || tuner.gains() == null || tuner.gains().length == 0) {
+            Log.w(TAG, "forwardFmVolumeToHal: the FM tuner port has no gain");
+            return;
+        }
+        AudioGain gain = tuner.gains()[0];
+
+        int mb = 0;
+        int index = mAudioManager.getStreamVolume(AudioManager.STREAM_MUSIC);
+        if (mAudioPatch != null) {
+            float db = Float.NEGATIVE_INFINITY;
+            if (!mAudioManager.isStreamMute(AudioManager.STREAM_MUSIC)) {
+                db = mAudioManager.getStreamVolumeDb(AudioManager.STREAM_MUSIC, index,
+                        deviceInfoType(mAudioSinkType));
+            }
+            mb = Float.isInfinite(db) ? gain.minValue() : Math.round(db * 100.0f);
+        }
+        mb = Math.max(gain.minValue(), Math.min(gain.maxValue(), mb));
+
+        AudioGainConfig config = gain.buildConfig(AudioGain.MODE_JOINT,
+                gain.channelMask(), new int[] {mb}, 0);
+        int status = AudioManager.setAudioPortGain(tuner, config);
+        Log.d(TAG, "forwardFmVolumeToHal index " + index + " on 0x"
+                + Integer.toHexString(mAudioSinkType) + ": " + mb + " mB, " + status);
     }
 
     @Override
@@ -1752,10 +1805,9 @@ public class FmService extends Service implements FmRecorder.OnRecorderStateChan
 
             startAudioTrack();
             startPatchOrRender();
-            // FM HW path bypasses the AudioFlinger stream mixer so the
-            // per-stream out_set_volume() callback is never invoked for FM.
-            // Push the current STREAM_MUSIC level into the HAL on startup so
-            // DAC1 Playback Volume reflects the system volume immediately;
+            // FM as a patch bypasses the AudioFlinger stream mixer, so no
+            // stream volume reaches it. Push music's level as the tuner's
+            // gain on startup so FM plays at the system volume at once;
             // mVolumeReceiver keeps it in sync on subsequent changes.
             forwardFmVolumeToHal();
             // AudioFlinger picks the actual output device asynchronously a
@@ -1777,10 +1829,8 @@ public class FmService extends Service implements FmRecorder.OnRecorderStateChan
     }
 
     private void startPatchOrRender() {
-        ArrayList<AudioPatch> patches = new ArrayList<AudioPatch>();
-        mAudioManager.listAudioPatches(patches);
         if (mAudioPatch == null) {
-            if (isPatchMixerToEarphone(patches)) {
+            if (canPlayAsPatch()) {
                 int status;
                 stopAudioTrack();
                 stopRender();
@@ -1797,63 +1847,35 @@ public class FmService extends Service implements FmRecorder.OnRecorderStateChan
         }
     }
 
-    // Make sure patches count will not be 0
-    private boolean isPatchMixerToEarphone(ArrayList<AudioPatch> patches) {
-        int deviceCount = 0;
-        int deviceEarphoneCount = 0;
+    // Where music plays, if FM can play there as a patch: the speaker or
+    // wired headphones, which the codec takes FM to. 0 for anything else
+    // (Bluetooth, USB), where FM goes through the render.
+    private int fmSinkType() {
+        int devices = mAudioManager.getDevicesForStream(AudioManager.STREAM_MUSIC);
+        if ((devices & AudioSystem.DEVICE_OUT_WIRED_HEADSET) != 0) {
+            return AudioSystem.DEVICE_OUT_WIRED_HEADSET;
+        }
+        if ((devices & AudioSystem.DEVICE_OUT_WIRED_HEADPHONE) != 0) {
+            return AudioSystem.DEVICE_OUT_WIRED_HEADPHONE;
+        }
+        if (devices == AudioSystem.DEVICE_OUT_SPEAKER) {
+            return AudioSystem.DEVICE_OUT_SPEAKER;
+        }
+        return 0;
+    }
 
+    private boolean canPlayAsPatch() {
         if (getRecorderState() == FmRecorder.STATE_RECORDING) {
-            // force software rendering when recording
+            // the recorder takes FM from the render
             return false;
         }
 
         if (mContext.getResources().getBoolean(R.bool.config_useSoftwareRenderingForAudio)) {
-            Log.w(TAG, "FIXME: forcing isPatchMixerToEarphone to return false. "
-                    + "Software rendering will be used.");
+            Log.w(TAG, "config_useSoftwareRenderingForAudio: FM goes through the render");
             return false;
-        } else {
-            for (AudioPatch patch : patches) {
-                AudioPortConfig[] sources = patch.sources();
-                AudioPortConfig[] sinks = patch.sinks();
-                AudioPortConfig sourceConfig = sources[0];
-                AudioPortConfig sinkConfig = sinks[0];
-                AudioPort sourcePort = sourceConfig.port();
-                AudioPort sinkPort = sinkConfig.port();
-                Log.d(TAG, "isPatchMixerToEarphone " + sourcePort + " ====> " + sinkPort);
-                if (sourcePort instanceof AudioMixPort && sinkPort instanceof AudioDevicePort) {
-                    deviceCount++;
-                    int type = ((AudioDevicePort) sinkPort).type();
-                    if (type == AudioSystem.DEVICE_OUT_WIRED_HEADSET ||
-                            type == AudioSystem.DEVICE_OUT_WIRED_HEADPHONE) {
-                        deviceEarphoneCount++;
-                    }
-                }
-            }
-            if (deviceEarphoneCount == 1 && deviceCount == deviceEarphoneCount) {
-                return true;
-            }
         }
-        return false;
-    }
 
-    // Check whether the patch (mixer -> device) is removed by native.
-    // If no patch (mixer -> device), return true.
-    private boolean isPatchMixerToDeviceRemoved(ArrayList<AudioPatch> patches) {
-        boolean noMixerToDevice = true;
-        for (AudioPatch patch : patches) {
-            AudioPortConfig[] sources = patch.sources();
-            AudioPortConfig[] sinks = patch.sinks();
-            AudioPortConfig sourceConfig = sources[0];
-            AudioPortConfig sinkConfig = sinks[0];
-            AudioPort sourcePort = sourceConfig.port();
-            AudioPort sinkPort = sinkConfig.port();
-
-            if (sourcePort instanceof AudioMixPort && sinkPort instanceof AudioDevicePort) {
-                noMixerToDevice = false;
-                break;
-            }
-        }
-        return noMixerToDevice;
+        return fmSinkType() != 0;
     }
 
     /**

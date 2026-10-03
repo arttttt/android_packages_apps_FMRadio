@@ -382,6 +382,9 @@ public class FmService extends Service implements FmRecorder.OnRecorderStateChan
     public void setSpeakerPhoneOn(boolean isSpeaker) {
         Log.d(TAG, "setSpeakerPhoneOn " + isSpeaker);
         setForceUse(isSpeaker);
+        // Music moves with the force use, but with nothing playing no port
+        // or patch changes to tell the listener, and FM must move as well
+        onAudioRouteChanged();
     }
 
     /**
@@ -1401,52 +1404,6 @@ public class FmService extends Service implements FmRecorder.OnRecorderStateChan
             onAudioRouteChanged();
         }
 
-        private void onAudioRouteChanged() {
-            if (mPowerStatus != POWER_UP) {
-                Log.d(TAG, "onAudioRouteChanged, not power up");
-                return;
-            }
-
-            if (!mIsAudioFocusHeld) {
-                Log.d(TAG, "onAudioRouteChanged, no audio focus");
-                return;
-            }
-
-            // Music moved: follow it, with a new patch if the codec can
-            // play FM there, else (BT, recording) through the render
-            if (mAudioPatch != null) {
-                if (!canPlayAsPatch()) {
-                    Log.d(TAG, "onAudioRouteChanged: patch to render");
-                    releaseAudioPatch();
-                    startRender();
-                } else if (fmSinkType() != mAudioSinkType) {
-                    Log.d(TAG, "onAudioRouteChanged: patch to another device");
-                    releaseAudioPatch();
-                    if (createAudioPatch() != AudioManager.SUCCESS) {
-                        Log.d(TAG, "onAudioRouteChanged: fallback as createAudioPatch failed");
-                        startRender();
-                    }
-                }
-            } else if (mIsRender) {
-                if (canPlayAsPatch()) {
-                    int status;
-                    stopAudioTrack();
-                    stopRender();
-                    status = createAudioPatch();
-                    if (status != AudioManager.SUCCESS){
-                       Log.d(TAG, "onAudioRouteChanged: fallback as createAudioPatch failed");
-                       startRender();
-                    }
-                }
-            }
-            // Audio route just changed (device was added/removed, a patch
-            // was created/destroyed, BT/WFD came online, etc). The system
-            // STREAM_MUSIC level is per-device, so re-sync FM's gain with
-            // the new current device's level, and with whether FM now
-            // plays as a patch or through the render.
-            forwardFmVolumeToHal();
-        }
-
         /**
          * Callback method called when the mediaserver dies
          */
@@ -1454,6 +1411,54 @@ public class FmService extends Service implements FmRecorder.OnRecorderStateChan
         public void onServiceDied() {
             enableFmAudio(false);
         }
+    }
+
+    // Where music plays may have changed: FM follows it (see
+    // createAudioPatch), and its gain with it
+    private void onAudioRouteChanged() {
+        if (mPowerStatus != POWER_UP) {
+            Log.d(TAG, "onAudioRouteChanged, not power up");
+            return;
+        }
+
+        if (!mIsAudioFocusHeld) {
+            Log.d(TAG, "onAudioRouteChanged, no audio focus");
+            return;
+        }
+
+        // Music moved: follow it, with a new patch if the codec can
+        // play FM there, else (BT, recording) through the render
+        if (mAudioPatch != null) {
+            if (!canPlayAsPatch()) {
+                Log.d(TAG, "onAudioRouteChanged: patch to render");
+                releaseAudioPatch();
+                startRender();
+            } else if (fmSinkType() != mAudioSinkType) {
+                Log.d(TAG, "onAudioRouteChanged: patch to another device");
+                releaseAudioPatch();
+                if (createAudioPatch() != AudioManager.SUCCESS) {
+                    Log.d(TAG, "onAudioRouteChanged: fallback as createAudioPatch failed");
+                    startRender();
+                }
+            }
+        } else if (mIsRender) {
+            if (canPlayAsPatch()) {
+                int status;
+                stopAudioTrack();
+                stopRender();
+                status = createAudioPatch();
+                if (status != AudioManager.SUCCESS){
+                   Log.d(TAG, "onAudioRouteChanged: fallback as createAudioPatch failed");
+                   startRender();
+                }
+            }
+        }
+        // Audio route just changed (device was added/removed, a patch
+        // was created/destroyed, BT/WFD came online, etc). The system
+        // STREAM_MUSIC level is per-device, so re-sync FM's gain with
+        // the new current device's level, and with whether FM now
+        // plays as a patch or through the render.
+        forwardFmVolumeToHal();
     }
 
     private synchronized void releaseAudioPatch() {

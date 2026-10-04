@@ -1319,6 +1319,11 @@ public class FmService extends Service implements FmRecorder.OnRecorderStateChan
             return AudioManager.ERROR;
         }
 
+        // The patch takes no gain of its own (AudioPolicy drops one passed
+        // with it), and the HAL still has the render's 0 dB: set the
+        // patch's gain first, or FM sounds at full level until it comes
+        setFmGain(sinkType);
+
         AudioDevicePortConfig sourceConfig = (AudioDevicePortConfig) mAudioSource
                 .activeConfig();
         AudioDevicePortConfig sinkConfig = (AudioDevicePortConfig) mAudioSink.activeConfig();
@@ -1501,23 +1506,29 @@ public class FmService extends Service implements FmRecorder.OnRecorderStateChan
     // below what the codec can attenuate, mutes. Through the render the
     // AudioTrack carries music's volume, so the tuner is left at 0 dB.
     private void forwardFmVolumeToHal() {
+        setFmGain(mAudioPatch != null ? mAudioSinkType : 0);
+    }
+
+    // FM's gain for a patch on the device of type sinkType, or for the
+    // render if 0
+    private void setFmGain(int sinkType) {
         if (mAudioManager == null) {
             return;
         }
         AudioDevicePort tuner = findDevicePort(AudioSystem.DEVICE_IN_FM_TUNER);
         if (tuner == null || tuner.gains() == null || tuner.gains().length == 0) {
-            Log.w(TAG, "forwardFmVolumeToHal: the FM tuner port has no gain");
+            Log.w(TAG, "setFmGain: the FM tuner port has no gain");
             return;
         }
         AudioGain gain = tuner.gains()[0];
 
         int mb = 0;
         int index = mAudioManager.getStreamVolume(AudioManager.STREAM_MUSIC);
-        if (mAudioPatch != null) {
+        if (sinkType != 0) {
             float db = Float.NEGATIVE_INFINITY;
             if (!mAudioManager.isStreamMute(AudioManager.STREAM_MUSIC)) {
                 db = mAudioManager.getStreamVolumeDb(AudioManager.STREAM_MUSIC, index,
-                        deviceInfoType(mAudioSinkType));
+                        deviceInfoType(sinkType));
             }
             mb = Float.isInfinite(db) ? gain.minValue() : Math.round(db * 100.0f);
         }
@@ -1526,8 +1537,8 @@ public class FmService extends Service implements FmRecorder.OnRecorderStateChan
         AudioGainConfig config = gain.buildConfig(AudioGain.MODE_JOINT,
                 gain.channelMask(), new int[] {mb}, 0);
         int status = AudioManager.setAudioPortGain(tuner, config);
-        Log.d(TAG, "forwardFmVolumeToHal index " + index + " on 0x"
-                + Integer.toHexString(mAudioSinkType) + ": " + mb + " mB, " + status);
+        Log.d(TAG, "setFmGain index " + index + " on 0x"
+                + Integer.toHexString(sinkType) + ": " + mb + " mB, " + status);
     }
 
     @Override

@@ -1573,7 +1573,6 @@ public class FmService extends Service implements FmRecorder.OnRecorderStateChan
 
     @Override
     public void onDestroy() {
-        mAudioManager.setParameters("AudioFmPreStop=1");
         setMute(true);
         // stop rds first, avoid blocking other native method
         if (isRdsSupported()) {
@@ -2144,7 +2143,6 @@ public class FmService extends Service implements FmRecorder.OnRecorderStateChan
                     switch (focusChange) {
                         case AudioManager.AUDIOFOCUS_LOSS:
                             synchronized (this) {
-                                mAudioManager.setParameters("AudioFmPreStop=1");
                                 setMute(true);
                                 focusChanged(AudioManager.AUDIOFOCUS_LOSS);
                             }
@@ -2152,7 +2150,6 @@ public class FmService extends Service implements FmRecorder.OnRecorderStateChan
 
                         case AudioManager.AUDIOFOCUS_LOSS_TRANSIENT:
                             synchronized (this) {
-                                mAudioManager.setParameters("AudioFmPreStop=1");
                                 setMute(true);
                                 focusChanged(AudioManager.AUDIOFOCUS_LOSS_TRANSIENT);
                             }

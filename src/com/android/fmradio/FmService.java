@@ -76,12 +76,9 @@ public class FmService extends Service implements FmRecorder.OnRecorderStateChan
     // Logging
     private static final String TAG = "FmService";
 
-    // Broadcast messages from other sounder APP to FM service
-    private static final String SOUND_POWER_DOWN_MSG = "com.android.music.musicservicecommand";
     private static final String FM_SEEK_PREVIOUS = "fmradio.seek.previous";
     private static final String FM_SEEK_NEXT = "fmradio.seek.next";
     private static final String FM_TURN_OFF = "fmradio.turnoff";
-    private static final String CMDPAUSE = "pause";
 
     // HandlerThread Keys
     private static final String FM_FREQUENCY = "frequency";
@@ -189,11 +186,10 @@ public class FmService extends Service implements FmRecorder.OnRecorderStateChan
     private FmServiceBroadcastReceiver mBroadcastReceiver = null;
     // Async handler
     private FmRadioServiceHandler mFmServiceHandler;
-    // Lock for lose audio focus and receive SOUND_POWER_DOWN_MSG
-    // at the same time
+    // Lock for lose audio focus and exitFm() at the same time
     // while recording call stop recording not finished(status is still
     // RECORDING), but
-    // SOUND_POWER_DOWN_MSG will exitFm(), if it is RECORDING will discard the
+    // exitFm(), if it is RECORDING will discard the
     // record.
     // 1. lose audio focus -> stop recording(lock) -> set to IDLE and show save
     // dialog
@@ -241,23 +237,9 @@ public class FmService extends Service implements FmRecorder.OnRecorderStateChan
         @Override
         public void onReceive(Context context, Intent intent) {
             String action = intent.getAction();
-            String command = intent.getStringExtra("command");
-            Log.d(TAG, "onReceive, action = " + action + " / command = " + command);
-            // other app want FM stop, stop FM
+            Log.d(TAG, "onReceive, action = " + action);
 
-            if (CMDPAUSE.equals(command)) {
-                // need remove all messages, make power down will be execute
-                mFmServiceHandler.removeCallbacksAndMessages(null);
-                Log.d(TAG, "Stopping FM playback");
-                powerDownAsync();
-            } else if (SOUND_POWER_DOWN_MSG.equals(action)) {
-                // phone shut down, so exit FM
-                // need remove all messages, make power down will be execute
-                mFmServiceHandler.removeCallbacksAndMessages(null);
-                exitFm();
-                stopSelf();
-                // phone shut down, so exit FM
-            } else if (Intent.ACTION_SHUTDOWN.equals(action)) {
+            if (Intent.ACTION_SHUTDOWN.equals(action)) {
                 /**
                  * here exitFm, system will send broadcast, system will shut
                  * down, so fm does not need call back to activity
@@ -1471,7 +1453,6 @@ public class FmService extends Service implements FmRecorder.OnRecorderStateChan
 
     private void registerFmBroadcastReceiver() {
         IntentFilter filter = new IntentFilter();
-        filter.addAction(SOUND_POWER_DOWN_MSG);
         filter.addAction(Intent.ACTION_SHUTDOWN);
         filter.addAction(Intent.ACTION_SCREEN_ON);
         filter.addAction(Intent.ACTION_SCREEN_OFF);

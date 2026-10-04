@@ -45,11 +45,11 @@ public class FmRecorder implements AudioRecorder.Callback {
     private static final String TAG = "FmRecorder";
     // file prefix
     public static final String RECORDING_FILE_PREFIX = "FM";
-    // file extension
-    public static final String RECORDING_FILE_EXTENSION = ".3gpp";
+    // file extension: AudioRecorder writes AAC into an MPEG-4 file
+    public static final String RECORDING_FILE_EXTENSION = ".m4a";
     // recording file folder
     public static final String FM_RECORD_FOLDER = "FM Recording";
-    private static final String RECORDING_FILE_TYPE = "audio/3gpp";
+    public static final String RECORDING_FILE_TYPE = "audio/mp4";
     private static final String RECORDING_FILE_SOURCE = "FM Recordings";
     // error type no sdcard
     public static final int ERROR_SDCARD_NOT_PRESENT = 0;

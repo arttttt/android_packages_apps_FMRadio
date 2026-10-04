@@ -396,19 +396,10 @@ public class FmService extends Service implements FmRecorder.OnRecorderStateChan
 
         exitRenderThread();
 
-       // need to create new audio record and audio play back track,
-       // because input/output device may be changed.
-       if (mAudioRecord != null) {
-           mAudioRecord.stop();
-           mAudioRecord.release();
-           mAudioRecord = null;
-       }
-       if (mAudioTrack != null) {
-           mAudioTrack.stop();
-           mAudioTrack.release();
-           mAudioTrack = null;
-       }
-       initAudioRecordSink();
+        // need to create new audio record and audio play back track,
+        // because input/output device may be changed.
+        releaseAudioRecordSink();
+        initAudioRecordSink();
 
         mIsRender = true;
         createRenderThread();
@@ -422,7 +413,9 @@ public class FmService extends Service implements FmRecorder.OnRecorderStateChan
         mIsRender = false;
         // HACK: Set volume to 0 to squelch any output between the call to
         // stopRender and the render thread calling AudioTrack.stop
-        mAudioTrack.setVolume(0.0f);
+        if (mAudioTrack != null) {
+            mAudioTrack.setVolume(0.0f);
+        }
     }
 
     private synchronized void createRenderThread() {
@@ -433,6 +426,9 @@ public class FmService extends Service implements FmRecorder.OnRecorderStateChan
     }
 
     private synchronized void exitRenderThread() {
+        if (mRenderThread == null) {
+            return;
+        }
         mRenderThread.interrupt();
         try {
             mRenderThread.join();
@@ -450,6 +446,12 @@ public class FmService extends Service implements FmRecorder.OnRecorderStateChan
     private static final int AUDIO_FORMAT = AudioFormat.ENCODING_PCM_16BIT;
     private static final int RECORD_BUF_SIZE = AudioRecord.getMinBufferSize(SAMPLE_RATE,
             CHANNEL_CONFIG, AUDIO_FORMAT);
+    // What the render's record captures, for the recorder to encode
+    private static final AudioFormat RENDER_FORMAT = new AudioFormat.Builder()
+            .setSampleRate(SAMPLE_RATE)
+            .setChannelMask(AudioFormat.CHANNEL_IN_STEREO)
+            .setEncoding(AUDIO_FORMAT)
+            .build();
     private boolean mIsRender = false;
 
     AudioDevicePort mAudioSource = null;
@@ -462,7 +464,7 @@ public class FmService extends Service implements FmRecorder.OnRecorderStateChan
     }
 
     private void stopAudioTrack() {
-        if (mAudioTrack.getPlayState() == AudioTrack.PLAYSTATE_PLAYING) {
+        if (mAudioTrack != null && mAudioTrack.getPlayState() == AudioTrack.PLAYSTATE_PLAYING) {
             mAudioTrack.stop();
         }
     }
@@ -1073,7 +1075,7 @@ public class FmService extends Service implements FmRecorder.OnRecorderStateChan
         }
 
         if (mFmRecorder == null) {
-            mFmRecorder = new FmRecorder(mAudioRecord.getFormat());
+            mFmRecorder = new FmRecorder(RENDER_FORMAT);
             mFmRecorder.registerRecorderStateListener(FmService.this);
         }
 
@@ -1241,9 +1243,6 @@ public class FmService extends Service implements FmRecorder.OnRecorderStateChan
         mFmServiceHandler = new FmRadioServiceHandler(handlerThread.getLooper());
 
         openDevice();
-
-        initAudioRecordSink();
-        createRenderThread();
     }
 
     private void registerAudioPortUpdateListener() {
@@ -1260,16 +1259,29 @@ public class FmService extends Service implements FmRecorder.OnRecorderStateChan
         }
     }
 
+    // The render's track and record exist only while it runs or after it
+    // has run: FM plays as a patch otherwise and needs neither.
     // This function may be called in different threads.
     // Need to add "synchronized" to make sure mAudioRecord and mAudioTrack are the newest.
-    // Thread 1: onCreate() or startRender()
-    // Thread 2: onAudioPatchListUpdate() or startRender()
     private synchronized void initAudioRecordSink() {
         mAudioRecord = new AudioRecord(MediaRecorder.AudioSource.RADIO_TUNER,
                 SAMPLE_RATE, CHANNEL_CONFIG, AUDIO_FORMAT, RECORD_BUF_SIZE);
         mAudioTrack = new AudioTrack(AudioManager.STREAM_MUSIC,
                 SAMPLE_RATE, CHANNEL_CONFIG, AUDIO_FORMAT, RECORD_BUF_SIZE, AudioTrack.MODE_STREAM);
         applyRenderDevice();
+    }
+
+    private synchronized void releaseAudioRecordSink() {
+        if (mAudioRecord != null) {
+            mAudioRecord.stop();
+            mAudioRecord.release();
+            mAudioRecord = null;
+        }
+        if (mAudioTrack != null) {
+            mAudioTrack.stop();
+            mAudioTrack.release();
+            mAudioTrack = null;
+        }
     }
 
     // The FM tuner, or the output device of that type
@@ -1535,6 +1547,7 @@ public class FmService extends Service implements FmRecorder.OnRecorderStateChan
         }
         stopRender();
         exitRenderThread();
+        releaseAudioRecordSink();
         releaseAudioPatch();
         unregisterAudioPortUpdateListener();
         super.onDestroy();

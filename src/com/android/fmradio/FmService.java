@@ -408,6 +408,25 @@ public class FmService extends Service implements FmRecorder.OnRecorderStateChan
         }
     }
 
+    // The recording's own capture from the tuner, for while FM plays as a
+    // patch: the render thread reads and encodes, and plays nothing
+    private synchronized void startCapture() {
+        Log.d(TAG, "startCapture");
+        mIsCapture = true;
+        if (mAudioRecord == null) {
+            initAudioRecordSink();
+        }
+        createRenderThread();
+        synchronized (mRenderLock) {
+            mRenderLock.notify();
+        }
+    }
+
+    private synchronized void stopCapture() {
+        Log.d(TAG, "stopCapture");
+        mIsCapture = false;
+    }
+
     private synchronized void stopRender() {
         Log.d(TAG, "stopRender");
         mIsRender = false;
@@ -453,6 +472,8 @@ public class FmService extends Service implements FmRecorder.OnRecorderStateChan
             .setEncoding(AUDIO_FORMAT)
             .build();
     private boolean mIsRender = false;
+    // A recording captures the tuner (see startCapture)
+    private boolean mIsCapture = false;
 
     AudioDevicePort mAudioSource = null;
     AudioDevicePort mAudioSink = null;
@@ -481,16 +502,21 @@ public class FmService extends Service implements FmRecorder.OnRecorderStateChan
             try {
                 byte[] buffer = new byte[RECORD_BUF_SIZE];
                 while (!Thread.interrupted()) {
-                    if (isRender()) {
-                        // Speaker mode or BT a2dp mode will come here and keep reading and writing.
-                        // If we want FM sound output from speaker or BT a2dp, we must record data
-                        // to AudioRecrd and write data to AudioTrack.
+                    if (isRender() || isCapture()) {
+                        // The render plays what it reads, a capture for a
+                        // recording beside a patch only encodes it
                         if (mAudioRecord.getRecordingState() == AudioRecord.RECORDSTATE_STOPPED) {
                             mAudioRecord.startRecording();
                         }
 
-                        if (mAudioTrack.getPlayState() == AudioTrack.PLAYSTATE_STOPPED) {
-                            mAudioTrack.play();
+                        if (isRender()) {
+                            if (mAudioTrack.getPlayState() == AudioTrack.PLAYSTATE_STOPPED) {
+                                mAudioTrack.play();
+                            }
+                        } else if (mAudioTrack.getPlayState() == AudioTrack.PLAYSTATE_PLAYING) {
+                            mAudioTrack.pause();
+                            mAudioTrack.flush();
+                            mAudioTrack.stop();
                         }
                         int size = mAudioRecord.read(buffer, 0, RECORD_BUF_SIZE);
                         // check whether need to ignore first 3 frames audio data from AudioRecord
@@ -516,7 +542,7 @@ public class FmService extends Service implements FmRecorder.OnRecorderStateChan
                             mFmRecorder.encode(tmpBuf);
                         }
                     } else {
-                        // Earphone mode will come here and wait.
+                        // A patch with no recording will come here and wait.
                         mCurrentFrame = 0;
 
                         if (mAudioTrack.getPlayState() == AudioTrack.PLAYSTATE_PLAYING) {
@@ -550,6 +576,10 @@ public class FmService extends Service implements FmRecorder.OnRecorderStateChan
     // A2dp or speaker mode should render
     private boolean isRender() {
         return (mIsRender && (mPowerStatus == POWER_UP) && mIsAudioFocusHeld);
+    }
+
+    private boolean isCapture() {
+        return (mIsCapture && (mPowerStatus == POWER_UP) && mIsAudioFocusHeld);
     }
 
     /**
@@ -1081,11 +1111,9 @@ public class FmService extends Service implements FmRecorder.OnRecorderStateChan
 
         if (isSdcardReady(sRecordingSdcard)) {
             mFmRecorder.startRecording(mContext);
-            if (mAudioPatch != null) {
-                Log.d(TAG, "Switching to SW rendering on recording start");
-                releaseAudioPatch();
-                startRender();
-            }
+            // The render records what it plays; a patch keeps playing, and
+            // the recording takes FM from the tuner beside it
+            startCapture();
         } else {
             onRecorderError(FmRecorder.ERROR_SDCARD_NOT_PRESENT);
         }
@@ -1384,7 +1412,7 @@ public class FmService extends Service implements FmRecorder.OnRecorderStateChan
         }
 
         // Music moved: follow it, with a new patch if the codec can
-        // play FM there, else (BT, recording) through the render
+        // play FM there, else (BT) through the render
         if (mAudioPatch != null) {
             if (!canPlayAsPatch()) {
                 Log.d(TAG, "onAudioRouteChanged: patch to render");
@@ -1833,11 +1861,6 @@ public class FmService extends Service implements FmRecorder.OnRecorderStateChan
     }
 
     private boolean canPlayAsPatch() {
-        if (getRecorderState() == FmRecorder.STATE_RECORDING) {
-            // the recorder takes FM from the render
-            return false;
-        }
-
         if (mContext.getResources().getBoolean(R.bool.config_useSoftwareRenderingForAudio)) {
             Log.w(TAG, "config_useSoftwareRenderingForAudio: FM goes through the render");
             return false;
@@ -2004,6 +2027,7 @@ public class FmService extends Service implements FmRecorder.OnRecorderStateChan
         notifyActivityStateChanged(bundle);
 
         if (state == FmRecorder.STATE_IDLE) { // stopped recording?
+            stopCapture();
             if (mPowerStatus == POWER_UP) { // playing?
                 if (mAudioPatch == null) {
                     // maybe switch to patch if possible

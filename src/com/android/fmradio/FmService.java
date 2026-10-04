@@ -1879,7 +1879,7 @@ public class FmService extends Service implements FmRecorder.OnRecorderStateChan
 
         if (null == mNotificationBuilder) {
             mNotificationBuilder = new Notification.Builder(mContext);
-            mNotificationBuilder.setSmallIcon(R.mipmap.ic_launcher);
+            mNotificationBuilder.setSmallIcon(R.drawable.ic_notification_fm);
             mNotificationBuilder.setShowWhen(false);
             mNotificationBuilder.setAutoCancel(true);
 

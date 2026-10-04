@@ -49,8 +49,8 @@ class AudioRecorder extends HandlerThread implements Handler.Callback {
     private MediaCodec mCodec;
     private MediaFormat mRequestedFormat;
     private LinkedList<Sample> mQueue = new LinkedList<>();
-    private MediaFormat mOutFormat;
     private int mMuxerTrack;
+    private boolean mMuxerStarted;
     private float mRate; // bytes per us
     private long mInputBufferPosition;
     private int mInputBufferIndex = -1;
@@ -144,10 +144,8 @@ class AudioRecorder extends HandlerThread implements Handler.Callback {
             onError("failed creating muxer", ex);
             return;
         }
-
-        mOutFormat = mCodec.getOutputFormat();
-        mMuxerTrack = mMuxer.addTrack(mOutFormat);
-        mMuxer.start();
+        // The track is added once the encoder names its format, see
+        // onOutputFormatChanged(): only that one carries the codec config.
     }
 
     @Override
@@ -213,7 +211,12 @@ class AudioRecorder extends HandlerThread implements Handler.Callback {
             Log.v(TAG, String.format("processOutputBuffer (len=%d) ts=%.3f",
                     outputBuffer.limit(), info.presentationTimeUs * 1e-6));
 
-        mMuxer.writeSampleData(mMuxerTrack, outputBuffer, info);
+        // The codec config is in the track's format; as a sample it would be
+        // a two-byte frame no decoder takes for audio
+        if (mMuxerStarted && info.size > 0 &&
+                (info.flags & MediaCodec.BUFFER_FLAG_CODEC_CONFIG) == 0) {
+            mMuxer.writeSampleData(mMuxerTrack, outputBuffer, info);
+        }
         mCodec.releaseOutputBuffer(index, false);
         if ((info.flags & MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0) {
             Log.d(TAG, "Output EOS");
@@ -263,7 +266,9 @@ class AudioRecorder extends HandlerThread implements Handler.Callback {
         }
 
         if (mMuxer != null) {
-            mMuxer.stop();
+            if (mMuxerStarted) {
+                mMuxer.stop();
+            }
             mMuxer.release();
         }
     }
@@ -321,6 +326,12 @@ class AudioRecorder extends HandlerThread implements Handler.Callback {
 
         @Override
         public void onOutputFormatChanged(MediaCodec codec, MediaFormat format) {
+            if (mMuxer == null || mMuxerStarted) {
+                return;
+            }
+            mMuxerTrack = mMuxer.addTrack(format);
+            mMuxer.start();
+            mMuxerStarted = true;
         }
     }
 

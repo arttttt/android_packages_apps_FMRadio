@@ -468,14 +468,6 @@ public class FmService extends Service implements FmRecorder.OnRecorderStateChan
         return mIsRender;
     }
 
-    private void startAudioTrack() {
-        if (mAudioTrack.getPlayState() == AudioTrack.PLAYSTATE_STOPPED) {
-            ArrayList<AudioPatch> patches = new ArrayList<AudioPatch>();
-            mAudioManager.listAudioPatches(patches);
-            mAudioTrack.play();
-        }
-    }
-
     private void stopAudioTrack() {
         if (mAudioTrack.getPlayState() == AudioTrack.PLAYSTATE_PLAYING) {
             mAudioTrack.stop();
@@ -1808,19 +1800,17 @@ public class FmService extends Service implements FmRecorder.OnRecorderStateChan
                 return;
             }
 
-            startAudioTrack();
             startPatchOrRender();
             // FM as a patch bypasses the AudioFlinger stream mixer, so no
             // stream volume reaches it. Push music's level as the tuner's
             // gain on startup so FM plays at the system volume at once;
             // mVolumeReceiver keeps it in sync on subsequent changes.
             forwardFmVolumeToHal();
-            // AudioFlinger picks the actual output device asynchronously a
-            // few ms after the AudioTrack is created. Re-fire the volume
-            // sync once the route has settled so getStreamVolume() reports
-            // the value for the right device — otherwise the first read
-            // returns the previous (often quieter) device's level and the
-            // user has to nudge the slider to get to the system level.
+            // The route may settle a little after FM starts -- the render's
+            // AudioTrack gets its device asynchronously, and a device that
+            // comes or goes moves music with no event here. Re-fire the
+            // volume sync once it has, so getStreamVolume() reports the
+            // level of the device FM actually plays on.
             new Handler(Looper.getMainLooper()).postDelayed(new Runnable() {
                 @Override
                 public void run() {

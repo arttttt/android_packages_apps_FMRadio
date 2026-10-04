@@ -353,16 +353,6 @@ public class FmStation {
     }
 
     /**
-     * Clean all stations which station type is searched
-     *
-     * @param context The context
-     */
-    public static void cleanSearchedStations(Context context) {
-        context.getContentResolver().delete(Station.CONTENT_URI,
-                Station.IS_FAVORITE + "=0", null);
-    }
-
-    /**
      * Clear all station of FMRadio database
      *
      * @param context The context

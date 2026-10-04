@@ -55,11 +55,6 @@ public class FmUtils {
     // Need to check before starting recording and during recording to avoid
     // recording keeps going but there is no free space in sdcard.
     public static final long LOW_SPACE_THRESHOLD = 512 * 1024;
-    // Different city may have different RDS information.
-    // We define 100 miles (160934.4m) to distinguish the cities.
-    public static final double LOCATION_DISTANCE_EXCEED = 160934.4;
-    private static final String FM_LOCATION_LATITUDE = "fm_location_latitude";
-    private static final String FM_LOCATION_LONGITUDE = "fm_location_longitude";
     private static final String FM_IS_FIRST_TIME_PLAY = "fm_is_first_time_play";
     private static final String FM_IS_FIRST_ENTER_STATION_LIST = "fm_is_first_enter_station_list";
     // StorageManager For FM record
@@ -202,33 +197,6 @@ public class FmUtils {
             Log.e(TAG, "hasEnoughSpace, sdcard may be unmounted:" + recordingSdcard);
         }
         return ret;
-    }
-
-    /**
-     * Get the latest searched location
-     * @return the list of latitude and longitude
-     */
-    public static double[] getLastSearchedLocation(Context context) {
-        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
-
-        String strLatitude = prefs.getString(FM_LOCATION_LATITUDE, "0.0");
-        String strLongitude = prefs.getString(FM_LOCATION_LONGITUDE, "0.0");
-        double latitude = Double.valueOf(strLatitude);
-        double longitude = Double.valueOf(strLongitude);
-        return new double[] { latitude, longitude };
-    }
-
-    /**
-     * Set the last searched location
-     */
-    public static void setLastSearchedLocation(Context context, double latitude, double longitude) {
-        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
-        SharedPreferences.Editor editor = prefs.edit();
-        String strLatitude = Double.valueOf(latitude).toString();
-        String strLongitude = Double.valueOf(longitude).toString();
-        editor.putString(FM_LOCATION_LATITUDE, strLatitude);
-        editor.putString(FM_LOCATION_LONGITUDE, strLongitude);
-        editor.commit();
     }
 
     /**

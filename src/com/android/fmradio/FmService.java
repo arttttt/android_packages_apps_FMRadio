@@ -159,8 +159,6 @@ public class FmService extends Service implements FmRecorder.OnRecorderStateChan
     // Fm power down by loss audio focus,should make power down menu item can
     // click
     private boolean mIsPowerDown = false;
-    // distance is over 100 miles(160934.4m)
-    private boolean mIsDistanceExceed = false;
     // FmMainActivity foreground
     private boolean mIsFmMainForeground = true;
     // FmFavoriteActivity foreground
@@ -2371,20 +2369,8 @@ public class FmService extends Service implements FmRecorder.OnRecorderStateChan
 
         int stationNum = 0;
         if (null != stations) {
-            int searchedListSize = stations.length;
-            if (mIsDistanceExceed) {
-                FmStation.cleanSearchedStations(mContext);
-                for (int j = 0; j < searchedListSize; j++) {
-                    int freqSearched = stations[j];
-                    if (FmUtils.isValidStation(freqSearched) &&
-                            !FmStation.isFavoriteStation(mContext, freqSearched)) {
-                        FmStation.insertStationToDb(mContext, freqSearched, null);
-                    }
-                }
-            } else {
-                // get stations from db
-                stationNum = updateDBInLocation(stations);
-            }
+            // get stations from db
+            stationNum = updateDBInLocation(stations);
         }
 
         Log.d(TAG, "updateStations.firstValidstation:" + firstValidstation +
@@ -2816,14 +2802,6 @@ public class FmService extends Service implements FmRecorder.OnRecorderStateChan
             seekStation = FmUtils.computeFrequency(mCurrentStation);
         }
         return isSeekTune;
-    }
-
-    /**
-     * Set the mIsDistanceExceed
-     * @param exceed true is exceed, false is not exceed
-     */
-    public void setDistanceExceed(boolean exceed) {
-        mIsDistanceExceed = exceed;
     }
 
     /**

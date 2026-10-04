@@ -25,8 +25,6 @@ import android.content.ServiceConnection;
 import android.database.Cursor;
 import android.graphics.Color;
 import android.graphics.PorterDuff;
-import android.location.Location;
-import android.location.LocationManager;
 import android.media.AudioManager;
 import android.os.Bundle;
 import android.os.Handler;
@@ -84,10 +82,6 @@ public class FmFavoriteActivity extends Activity {
 
     private MenuItem mMenuRefresh = null;
 
-    private LocationManager mLocationManager;
-
-    private Location mCurLocation;
-
     private boolean mIsActivityForeground = true;
 
     /**
@@ -106,7 +100,6 @@ public class FmFavoriteActivity extends Activity {
         ActionBar actionBar = getActionBar();
         actionBar.setTitle(getString(R.string.station_title));
         actionBar.setDisplayHomeAsUpEnabled(true);
-        mLocationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
         mContext = getApplicationContext();
 
         mMyAdapter = new MyFavoriteAdapter(mContext);
@@ -175,25 +168,6 @@ public class FmFavoriteActivity extends Activity {
                     mMyAdapter.swipResult(null);
                     mLvFavorites.setEmptyView(mSearchTips);
                     mSearchProgress.setIndeterminate(true);
-
-                    // If current location and last location exceed defined distance, delete the RDS database
-                    if (isGpsOpen()) {
-                        mCurLocation = mLocationManager
-                                .getLastKnownLocation(LocationManager.GPS_PROVIDER);
-                        if (mCurLocation != null) {
-                            double[] lastLocations = FmUtils.getLastSearchedLocation(mContext);
-                            float distance[] = new float[2];
-                            Location.distanceBetween(lastLocations[0], lastLocations[1],
-                                    mCurLocation.getLatitude(), mCurLocation.getLongitude(),
-                                    distance);
-                            float searchedDistance = distance[0];
-                            boolean exceed =
-                                    searchedDistance > FmUtils.LOCATION_DISTANCE_EXCEED;
-                            mService.setDistanceExceed(exceed);
-                            FmUtils.setLastSearchedLocation(mContext, mCurLocation.getLatitude(),
-                                    mCurLocation.getLongitude());
-                        }
-                    }
 
                     mService.startScanAsync();
                 }
@@ -585,13 +559,4 @@ public class FmFavoriteActivity extends Activity {
         public void onServiceDisconnected(ComponentName className) {
         }
     };
-
-    /**
-     * check gps is open or not
-     *
-     * @return true is open
-     */
-    private boolean isGpsOpen() {
-        return mLocationManager.isProviderEnabled(android.location.LocationManager.GPS_PROVIDER);
-    }
 }

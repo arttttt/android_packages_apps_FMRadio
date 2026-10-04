@@ -105,12 +105,6 @@ public class FmService extends Service implements FmRecorder.OnRecorderStateChan
     // ignore audio data
     private static final int AUDIO_FRAMES_TO_IGNORE_COUNT = 3;
 
-    // Set audio policy for FM
-    // should check AUDIO_POLICY_FORCE_FOR_MEDIA in audio_policy.h
-    private static final int FOR_PROPRIETARY = 1;
-    // Forced Use value
-    private int mForcedUseForMedia;
-
     // FM recorder
     FmRecorder mFmRecorder = null;
     private BroadcastReceiver mSdcardListener = null;
@@ -304,9 +298,9 @@ public class FmService extends Service implements FmRecorder.OnRecorderStateChan
                             FmListener.MSGID_POWERUP_FINISHED);
                     focusChanged(AudioManager.AUDIOFOCUS_LOSS);
 
-                    // Need check to switch to earphone mode for audio will
-                    // change to AudioSystem.FORCE_NONE
-                    setForceUse(false);
+                    // Without the antenna FM goes off, and back on with the
+                    // headphones it needs
+                    setSpeakerUsed(false);
 
                     // Notify UI change to earphone mode, false means not speaker mode
                     Bundle bundle = new Bundle(2);
@@ -368,10 +362,29 @@ public class FmService extends Service implements FmRecorder.OnRecorderStateChan
         return mAudioManager.isWiredHeadsetOn();
     }
 
-    private void setForceUse(boolean isSpeaker) {
-        mForcedUseForMedia = isSpeaker ? AudioSystem.FORCE_SPEAKER : AudioSystem.FORCE_NONE;
-        AudioSystem.setForceUse(FOR_PROPRIETARY, mForcedUseForMedia);
+    // The speaker is FM's alone to choose: the patch is made to it (see
+    // fmSinkType) and the render's track asks for it, while everything else
+    // plays where the system routes it
+    private void setSpeakerUsed(boolean isSpeaker) {
         mIsSpeakerUsed = isSpeaker;
+        applyRenderDevice();
+    }
+
+    private synchronized void applyRenderDevice() {
+        if (mAudioTrack == null) {
+            return;
+        }
+        AudioDeviceInfo speaker = null;
+        if (mIsSpeakerUsed) {
+            for (AudioDeviceInfo device : mAudioManager.getDevices(
+                    AudioManager.GET_DEVICES_OUTPUTS)) {
+                if (device.getType() == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER) {
+                    speaker = device;
+                    break;
+                }
+            }
+        }
+        mAudioTrack.setPreferredDevice(speaker);
     }
 
     /**
@@ -381,9 +394,9 @@ public class FmService extends Service implements FmRecorder.OnRecorderStateChan
      */
     public void setSpeakerPhoneOn(boolean isSpeaker) {
         Log.d(TAG, "setSpeakerPhoneOn " + isSpeaker);
-        setForceUse(isSpeaker);
-        // Music moves with the force use, but with nothing playing no port
-        // or patch changes to tell the listener, and FM must move as well
+        setSpeakerUsed(isSpeaker);
+        // Nothing in the system changes with it, so no port or patch update
+        // tells the listener: FM moves now
         onAudioRouteChanged();
     }
 
@@ -399,7 +412,7 @@ public class FmService extends Service implements FmRecorder.OnRecorderStateChan
     }
 
     private synchronized void startRender() {
-        Log.d(TAG, "startRender " + AudioSystem.getForceUse(FOR_PROPRIETARY));
+        Log.d(TAG, "startRender, speaker " + mIsSpeakerUsed);
 
         exitRenderThread();
 
@@ -557,10 +570,6 @@ public class FmService extends Service implements FmRecorder.OnRecorderStateChan
         return (mIsRender && (mPowerStatus == POWER_UP) && mIsAudioFocusHeld);
     }
 
-    private boolean isSpeakerPhoneOn() {
-        return (mForcedUseForMedia == AudioSystem.FORCE_SPEAKER);
-    }
-
     /**
      * open FM device, should be call before power up
      *
@@ -659,9 +668,6 @@ public class FmService extends Service implements FmRecorder.OnRecorderStateChan
 
         if (!mWakeLock.isHeld()) {
             mWakeLock.acquire();
-        }
-        if (mIsSpeakerUsed != isSpeakerPhoneOn()) {
-            setForceUse(mIsSpeakerUsed);
         }
         if (mRecordState != FmRecorder.STATE_PLAYBACK) {
             enableFmAudio(true);
@@ -1292,8 +1298,6 @@ public class FmService extends Service implements FmRecorder.OnRecorderStateChan
         mFmServiceHandler = new FmRadioServiceHandler(handlerThread.getLooper());
 
         openDevice();
-        // set speaker to default status, avoid setting->clear data.
-        setForceUse(mIsSpeakerUsed);
 
         initAudioRecordSink();
         createRenderThread();
@@ -1322,6 +1326,7 @@ public class FmService extends Service implements FmRecorder.OnRecorderStateChan
                 SAMPLE_RATE, CHANNEL_CONFIG, AUDIO_FORMAT, RECORD_BUF_SIZE);
         mAudioTrack = new AudioTrack(AudioManager.STREAM_MUSIC,
                 SAMPLE_RATE, CHANNEL_CONFIG, AUDIO_FORMAT, RECORD_BUF_SIZE, AudioTrack.MODE_STREAM);
+        applyRenderDevice();
     }
 
     // The FM tuner, or the output device of that type
@@ -1845,6 +1850,9 @@ public class FmService extends Service implements FmRecorder.OnRecorderStateChan
     // wired headphones, which the codec takes FM to. 0 for anything else
     // (Bluetooth, USB), where FM goes through the render.
     private int fmSinkType() {
+        if (mIsSpeakerUsed) {
+            return AudioSystem.DEVICE_OUT_SPEAKER;
+        }
         int devices = mAudioManager.getDevicesForStream(AudioManager.STREAM_MUSIC);
         if ((devices & AudioSystem.DEVICE_OUT_WIRED_HEADSET) != 0) {
             return AudioSystem.DEVICE_OUT_WIRED_HEADSET;
@@ -2105,10 +2113,6 @@ public class FmService extends Service implements FmRecorder.OnRecorderStateChan
      * @return true, success; false, fail;
      */
     public boolean requestAudioFocus() {
-        if (FmUtils.getIsSpeakerModeOnFocusLost(mContext)) {
-            setForceUse(true);
-            FmUtils.setIsSpeakerModeOnFocusLost(mContext, false);
-        }
         if (mIsAudioFocusHeld) {
             return true;
         }
@@ -2214,7 +2218,6 @@ public class FmService extends Service implements FmRecorder.OnRecorderStateChan
                     }
                 }
                 handlePowerDown();
-                forceToHeadsetMode();
                 break;
 
             case AudioManager.AUDIOFOCUS_LOSS_TRANSIENT:
@@ -2236,14 +2239,9 @@ public class FmService extends Service implements FmRecorder.OnRecorderStateChan
                     }
                 }
                 handlePowerDown();
-                forceToHeadsetMode();
                 break;
 
             case AudioManager.AUDIOFOCUS_GAIN:
-                if (FmUtils.getIsSpeakerModeOnFocusLost(mContext)) {
-                    setForceUse(true);
-                    FmUtils.setIsSpeakerModeOnFocusLost(mContext, false);
-                }
                 if ((mPowerStatus != POWER_UP) && mPausedByTransientLossOfFocus) {
                     final int bundleSize = 1;
                     mFmServiceHandler.removeMessages(FmListener.MSGID_POWERUP_FINISHED);
@@ -2261,14 +2259,6 @@ public class FmService extends Service implements FmRecorder.OnRecorderStateChan
 
             default:
                 break;
-        }
-    }
-
-    private void forceToHeadsetMode() {
-        if (mIsSpeakerUsed && isHeadSetIn()) {
-            AudioSystem.setForceUse(FOR_PROPRIETARY, AudioSystem.FORCE_NONE);
-            // save user's option to shared preferences.
-            FmUtils.setIsSpeakerModeOnFocusLost(mContext, true);
         }
     }
 
@@ -2517,9 +2507,7 @@ public class FmService extends Service implements FmRecorder.OnRecorderStateChan
 
                 // fm exit
                 case FmListener.MSGID_FM_EXIT:
-                    if (mIsSpeakerUsed) {
-                        setForceUse(false);
-                    }
+                    setSpeakerUsed(false);
                     powerDown();
                     closeDevice();
 

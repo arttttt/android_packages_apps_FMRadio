@@ -39,7 +39,6 @@ import android.view.Menu;
 import android.view.MenuInflater;
 import android.view.MenuItem;
 import android.view.View;
-import android.view.ViewConfiguration;
 import android.view.animation.Animation;
 import android.view.animation.Animation.AnimationListener;
 import android.view.animation.AnimationUtils;
@@ -57,7 +56,6 @@ import com.android.fmradio.views.FmScroller;
 import com.android.fmradio.views.FmSnackBar;
 import com.android.fmradio.views.FmScroller.EventListener;
 
-import java.lang.reflect.Field;
 
 /**
  * This class interact with user, provide FM basic function.
@@ -301,12 +299,6 @@ public class FmMainActivity extends Activity implements FmFavoriteEditDialog.Edi
                     finish();
                     break;
 
-                case FmListener.LISTEN_RDSSTATION_CHANGED:
-                    bundle = msg.getData();
-                    int rdsStation = bundle.getInt(FmListener.KEY_RDS_STATION);
-                    refreshStationUI(rdsStation);
-                    break;
-
                 case FmListener.LISTEN_PS_CHANGED:
                     String stationName = FmStation.getStationName(mContext, mCurrentStation);
                     mTextStationName.setText(stationName);
@@ -482,21 +474,6 @@ public class FmMainActivity extends Activity implements FmFavoriteEditDialog.Edi
         // Bind the activity to FM audio stream.
         setVolumeControlStream(AudioManager.STREAM_MUSIC);
         setContentView(R.layout.main);
-        try {
-            ViewConfiguration config = ViewConfiguration.get(this);
-            Field menuKeyField = ViewConfiguration.class.getDeclaredField("sHasPermanentMenuKey");
-            if (menuKeyField != null) {
-                menuKeyField.setAccessible(true);
-                menuKeyField.setBoolean(config, false);
-            }
-        } catch (NoSuchFieldException e) {
-            e.printStackTrace();
-        } catch (IllegalAccessException e) {
-            e.printStackTrace();
-        } catch (IllegalArgumentException e) {
-            e.printStackTrace();
-        }
-
         mFragmentManager = getFragmentManager();
         mContext = getApplicationContext();
 
@@ -822,21 +799,12 @@ public class FmMainActivity extends Activity implements FmFavoriteEditDialog.Edi
                 extras.putInt("playlist", playlistId);
                 try {
                     playMusicIntent.putExtras(extras);
-                    playMusicIntent.setClassName("com.google.android.music",
-                            "com.google.android.music.ui.TrackContainerActivity");
                     playMusicIntent.setType("vnd.android.cursor.dir/playlist");
                     startActivity(playMusicIntent);
-                } catch (IllegalArgumentException | ActivityNotFoundException e1) {
-                    try {
-                        playMusicIntent = new Intent(Intent.ACTION_VIEW);
-                        playMusicIntent.putExtras(extras);
-                        playMusicIntent.setType("vnd.android.cursor.dir/playlist");
-                        startActivity(playMusicIntent);
-                    } catch (ActivityNotFoundException e2) {
-                        // No activity respond
-                        Log.d(TAG,
-                                "onOptionsItemSelected, No activity respond playlist view intent");
-                    }
+                } catch (ActivityNotFoundException e) {
+                    // No activity respond
+                    Log.d(TAG,
+                            "onOptionsItemSelected, No activity respond playlist view intent");
                 }
                 break;
             default:
@@ -879,22 +847,13 @@ public class FmMainActivity extends Activity implements FmFavoriteEditDialog.Edi
                         public void onActionTriggered() {
                             Intent playMusicIntent = new Intent(Intent.ACTION_VIEW);
                             try {
-                                playMusicIntent.setClassName("com.google.android.music",
-                                        "com.google.android.music.AudioPreview");
                                 playMusicIntent.setDataAndType(playUri,
                                         FmRecorder.RECORDING_FILE_TYPE);
                                 startActivity(playMusicIntent);
-                            } catch (IllegalArgumentException | ActivityNotFoundException e1) {
-                                try {
-                                    playMusicIntent = new Intent(Intent.ACTION_VIEW);
-                                    playMusicIntent.setDataAndType(playUri,
-                                            FmRecorder.RECORDING_FILE_TYPE);
-                                    startActivity(playMusicIntent);
-                                } catch (ActivityNotFoundException e2) {
-                                    // No activity respond
-                                    Log.d(TAG,"onActivityResult, no activity "
-                                            + "respond play record file intent");
-                                }
+                            } catch (ActivityNotFoundException e) {
+                                // No activity respond
+                                Log.d(TAG,"onActivityResult, no activity "
+                                        + "respond play record file intent");
                             }
                         }
                     };

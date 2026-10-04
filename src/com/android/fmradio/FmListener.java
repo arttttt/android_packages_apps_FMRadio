@@ -26,9 +26,6 @@ public interface FmListener {
     /**
      * directly call back from service to activity
      */
-    // FM RDS station changed
-    int LISTEN_RDSSTATION_CHANGED = 0x00100010;
-
     // FM PS information changed
     int LISTEN_PS_CHANGED = 0x00100011;
 
@@ -56,7 +53,6 @@ public interface FmListener {
     String KEY_IS_SEEK = "key_is_seek";
     String KEY_SEEK_TO_STATION = "key_seek_to_station";
     String KEY_IS_SCAN = "key_is_scan";
-    String KEY_RDS_STATION = "key_rds_station";
     String KEY_PS_INFO = "key_ps_info";
     String KEY_RT_INFO = "key_rt_info";
     String KEY_STATION_NUM = "key_station_num";
@@ -82,7 +78,6 @@ public interface FmListener {
     int MSGID_SWITCH_ANTENNA = 4;
     int MSGID_SET_RDS_FINISHED = 5;
     int MSGID_SET_CHANNEL_FINISHED = 6;
-    int MSGID_SET_MUTE_FINISHED = 7;
     // Fm main
     int MSGID_POWERUP_FINISHED = 9;
     int MSGID_POWERDOWN_FINISHED = 10;
@@ -92,7 +87,6 @@ public interface FmListener {
     int MSGID_AUDIOFOCUS_FAILED = 14;
     int MSGID_TUNE_FINISHED = 15;
     int MSGID_SEEK_FINISHED = 16;
-    int MSGID_ACTIVE_AF_FINISHED = 18;
     // Recording
     int MSGID_RECORD_STATE_CHANGED = 19;
     int MSGID_RECORD_ERROR = 20;

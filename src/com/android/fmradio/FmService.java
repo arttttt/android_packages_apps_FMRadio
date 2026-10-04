@@ -929,43 +929,6 @@ public class FmService extends Service implements FmRecorder.OnRecorderStateChan
     }
 
     /**
-     * Get AF frequency
-     *
-     * @return AF frequency
-     */
-    public void activeAfAsync() {
-        mFmServiceHandler.removeMessages(FmListener.MSGID_ACTIVE_AF_FINISHED);
-        mFmServiceHandler.sendEmptyMessage(FmListener.MSGID_ACTIVE_AF_FINISHED);
-    }
-
-    private int activeAf() {
-        if (mPowerStatus != POWER_UP) {
-            Log.w(TAG, "activeAf, FM is not powered up");
-            return -1;
-        }
-
-        int frequency = FmNative.activeAf();
-        return frequency;
-    }
-
-    /**
-     * Mute or unmute FM voice
-     *
-     * @param mute true for mute, false for unmute
-     *
-     * @return (true, success; false, failed)
-     */
-    public void setMuteAsync(boolean mute) {
-        mFmServiceHandler.removeMessages(FmListener.MSGID_SET_MUTE_FINISHED);
-        final int bundleSize = 1;
-        Bundle bundle = new Bundle(bundleSize);
-        bundle.putBoolean(OPTION, mute);
-        Message msg = mFmServiceHandler.obtainMessage(FmListener.MSGID_SET_MUTE_FINISHED);
-        msg.setData(bundle);
-        mFmServiceHandler.sendMessage(msg);
-    }
-
-    /**
      * Mute or unmute FM voice
      *
      * @param mute true for mute, false for unmute
@@ -1915,7 +1878,7 @@ public class FmService extends Service implements FmRecorder.OnRecorderStateChan
             intent = new Intent(FM_TURN_OFF);
             intent.setClass(mContext, FmService.class);
             pIntent = PendingIntent.getService(mContext, 0, intent, 0);
-            mNotificationBuilder.addAction(R.drawable.btn_fm_rec_stop_enabled,
+            mNotificationBuilder.addAction(R.drawable.btn_fm_stop,
                     getString(R.string.notif_stop), pIntent);
             intent = new Intent(FM_SEEK_NEXT);
             intent.setClass(mContext, FmService.class);
@@ -2608,15 +2571,6 @@ public class FmService extends Service implements FmRecorder.OnRecorderStateChan
                 case FmListener.MSGID_SET_RDS_FINISHED:
                     bundle = msg.getData();
                     setRds(bundle.getBoolean(OPTION));
-                    break;
-
-                case FmListener.MSGID_SET_MUTE_FINISHED:
-                    bundle = msg.getData();
-                    setMute(bundle.getBoolean(OPTION));
-                    break;
-
-                case FmListener.MSGID_ACTIVE_AF_FINISHED:
-                    activeAf();
                     break;
 
                 /********** recording **********/

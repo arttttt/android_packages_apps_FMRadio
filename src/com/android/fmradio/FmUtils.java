@@ -121,6 +121,35 @@ public class FmUtils {
      *
      * @return station The frequency
      */
+    /**
+     * The station for a frequency, to the nearest: a float such as 91.1
+     * times CONVERT_RATE can fall just under 911
+     *
+     * @param frequency The frequency, in MHz
+     * @return The station
+     */
+    public static int computeStationRounded(float frequency) {
+        return Math.round(frequency * CONVERT_RATE);
+    }
+
+    /**
+     * The top of the band
+     *
+     * @return The highest station
+     */
+    public static int getHighestStation() {
+        return HIGHEST_STATION;
+    }
+
+    /**
+     * The bottom of the band
+     *
+     * @return The lowest station
+     */
+    public static int getLowestStation() {
+        return LOWEST_STATION;
+    }
+
     public static float computeFrequency(int station) {
         return (float) station / CONVERT_RATE;
     }

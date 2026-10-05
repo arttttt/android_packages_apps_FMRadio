@@ -45,6 +45,7 @@
     <string name="fm_no_headset_text">Чтобы слушать радио, подключите наушники (они работают как антенна)</string>
     <string name="station_title">Радиостанции</string>
     <string name="station_searching_tips">Поиск станций</string>
+    <string name="station_searching_at">Поиск станций: %1$s МГц · найдено %2$d</string>
     <string name="station_empty_text">Станции не найдены</string>
     <string name="minutes_label">м.</string>
     <string name="seconds_label">с.</string>

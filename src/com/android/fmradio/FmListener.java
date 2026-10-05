@@ -56,6 +56,8 @@ public interface FmListener {
     String KEY_PS_INFO = "key_ps_info";
     String KEY_RT_INFO = "key_rt_info";
     String KEY_STATION_NUM = "key_station_num";
+    // The station a scan has got to
+    String KEY_SCAN_STATION = "key_scan_station";
 
     // Audio focus related
     String KEY_AUDIOFOCUS_CHANGED = "key_audiofocus_changed";
@@ -98,6 +100,8 @@ public interface FmListener {
     int MSGID_SAVERECORDING_FINISHED = 26;
     // Audio focus related
     int MSGID_AUDIOFOCUS_CHANGED = 30;
+    // A scan found a station, put in the station list; the scan goes on
+    int MSGID_SCAN_STATION_FOUND = 34;
 
     int NOT_AUDIO_FOCUS = 33;
 

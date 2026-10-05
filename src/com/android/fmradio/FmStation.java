@@ -360,4 +360,14 @@ public class FmStation {
     public static void cleanAllStations(Context context) {
         context.getContentResolver().delete(Station.CONTENT_URI, null, null);
     }
+
+    /**
+     * Clear the stations a scan put in, keeping the favorites
+     *
+     * @param context The context
+     */
+    public static void cleanSearchedStations(Context context) {
+        context.getContentResolver().delete(Station.CONTENT_URI,
+                Station.IS_FAVORITE + "=0", null);
+    }
 }

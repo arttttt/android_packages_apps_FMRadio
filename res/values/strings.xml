@@ -79,6 +79,9 @@
     <string name="station_title">Radio Stations</string>
     <!-- The tips shown when we refresh in station list [CHAR LIMIT=50] -->
     <string name="station_searching_tips">Getting stations</string>
+    <!-- Over the station list while a scan runs: the frequency it has got to,
+         and how many stations it has found -->
+    <string name="station_searching_at">Getting stations: %1$s MHz · %2$d found</string>
     <!-- The tips shown when we refresh in station list but no stations found [CHAR LIMIT=50] -->
     <string name="station_empty_text">No stations found</string>
     <!-- It means "minutes" that shown in record screen [CHAR LIMIT=2] -->

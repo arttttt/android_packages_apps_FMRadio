@@ -79,6 +79,9 @@ public class FmFavoriteActivity extends Activity {
     private MyFavoriteAdapter mMyAdapter;
 
     private ProgressBar mSearchProgress = null;
+    private View mScanPanel = null;
+    private TextView mScanText = null;
+    private ProgressBar mScanProgress = null;
 
     private MenuItem mMenuRefresh = null;
 
@@ -106,6 +109,10 @@ public class FmFavoriteActivity extends Activity {
         mLvFavorites = (ListView) findViewById(R.id.station_list);
         mSearchTips = (LinearLayout) findViewById(R.id.search_tips);
         mSearchProgress = (ProgressBar) findViewById(R.id.search_progress);
+        mScanPanel = findViewById(R.id.scan_panel);
+        mScanText = (TextView) findViewById(R.id.scan_text);
+        mScanProgress = (ProgressBar) findViewById(R.id.scan_progress);
+        mScanProgress.setMax(FmUtils.getHighestStation() - FmUtils.getLowestStation());
         mLvFavorites.setAdapter(mMyAdapter); // set adapter
         mMyAdapter.swipResult(getData());
 
@@ -166,8 +173,7 @@ public class FmFavoriteActivity extends Activity {
                     refreshMenuItem(false);
 
                     mMyAdapter.swipResult(null);
-                    mLvFavorites.setEmptyView(mSearchTips);
-                    mSearchProgress.setIndeterminate(true);
+                    showScanProgress(true, FmUtils.getLowestStation(), 0);
 
                     mService.startScanAsync();
                 }
@@ -463,6 +469,7 @@ public class FmFavoriteActivity extends Activity {
                     // cancel scan happen
                     boolean isScan = bundle.getBoolean(FmListener.KEY_IS_SCAN);
                     int searchedNum = bundle.getInt(FmListener.KEY_STATION_NUM);
+                    showScanProgress(false, 0, 0);
                     refreshMenuItem(true);
                     mMyAdapter.swipResult(getData());
                     mService.updatePlayingNotification();
@@ -483,6 +490,13 @@ public class FmFavoriteActivity extends Activity {
                             + String.valueOf(searchedNum);
                     Toast.makeText(mContext, text, Toast.LENGTH_SHORT).show();
                     break;
+                case FmListener.MSGID_SCAN_STATION_FOUND:
+                    // the list as the scan has it so far
+                    mMyAdapter.swipResult(getData());
+                    showScanProgress(true,
+                            msg.getData().getInt(FmListener.KEY_SCAN_STATION),
+                            msg.getData().getInt(FmListener.KEY_STATION_NUM));
+                    break;
                 case FmListener.MSGID_SWITCH_ANTENNA:
                     bundle = msg.getData();
                     boolean isHeadset = bundle.getBoolean(FmListener.KEY_IS_SWITCH_ANTENNA);
@@ -496,6 +510,23 @@ public class FmFavoriteActivity extends Activity {
             }
         }
     };
+
+    /*
+     * While a scan runs the list fills as stations are found, so a progress
+     * shown over an empty list would soon be gone: a panel above the list
+     * says the scan is on, how far up the band it has got and how many
+     * stations it has found.
+     */
+    private void showScanProgress(boolean scanning, int station, int found) {
+        if (!scanning) {
+            mScanPanel.setVisibility(View.GONE);
+            return;
+        }
+        mScanText.setText(getString(R.string.station_searching_at,
+                FmUtils.formatStation(station), found));
+        mScanProgress.setProgress(Math.max(0, station - FmUtils.getLowestStation()));
+        mScanPanel.setVisibility(View.VISIBLE);
+    }
 
     private void refreshMenuItem(boolean enabled) {
         // action menu
@@ -532,16 +563,16 @@ public class FmFavoriteActivity extends Activity {
             // After it is called, it will save status to SharedPreferences.
             if (FmUtils.isFirstEnterStationList(mContext) || (0 == mMyAdapter.getCount())) {
                 refreshMenuItem(false);
-                mLvFavorites.setEmptyView(mSearchTips);
-                mSearchProgress.setIndeterminate(true);
                 mMyAdapter.swipResult(null);
+                showScanProgress(true, FmUtils.getLowestStation(), 0);
                 mService.startScanAsync();
             } else {
                 boolean isScan = mService.isScanning();
                 if (isScan) {
-                    mMyAdapter.swipResult(null);
-                    mLvFavorites.setEmptyView(mSearchTips);
-                    mSearchProgress.setIndeterminate(true);
+                    // the stations found so far are in the list already
+                    mMyAdapter.swipResult(getData());
+                    showScanProgress(true, FmUtils.getLowestStation(),
+                            mMyAdapter.getCount());
                 } else {
                     // TODO it's on UI thread, change to sub thread
                     mMyAdapter.swipResult(getData());

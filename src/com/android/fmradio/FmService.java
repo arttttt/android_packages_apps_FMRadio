@@ -839,37 +839,76 @@ public class FmService extends Service implements FmRecorder.OnRecorderStateChan
         mFmServiceHandler.sendEmptyMessage(FmListener.MSGID_SCAN_FINISHED);
     }
 
+    /*
+     * A scan of the band, a station at a time: the stations a previous scan
+     * found are cleared (favorites stay), and each one found goes into the
+     * list as it is found, for the list to show it then rather than at the
+     * end. The tuner seeks by itself, a fraction of a second a station, from
+     * the top of the band, where an upward seek starts again at the bottom,
+     * until a seek finds nothing new. A stop ends it between two seeks and
+     * keeps what was found.
+     */
     private int[] startScan() {
         int[] stations = null;
 
         setRds(false);
         setMute(true);
-        short[] stationsInShort = null;
+        ArrayList<Integer> found = new ArrayList<Integer>();
         if (!mIsStopScanCalled) {
+            FmStation.cleanSearchedStations(mContext);
+            notifyScanStationFound(0, FmUtils.getLowestStation());
+
             mIsNativeScanning = true;
-            stationsInShort = FmNative.autoScan();
+            float from = FmUtils.computeFrequency(FmUtils.getHighestStation());
+            FmNative.tune(from);
+            int prev = -1;
+            while (!mIsStopScanCalled) {
+                float frequency = FmNative.seek(from, true);
+                int station = FmUtils.computeStationRounded(frequency);
+                // nothing found answers where it started; past the top
+                // the seek has come round again
+                if (!FmUtils.isValidStation(station) || station <= prev
+                        || station == FmUtils.computeStationRounded(from)) {
+                    break;
+                }
+                prev = station;
+                found.add(station);
+                if (!FmStation.isStationExist(mContext, station)) {
+                    FmStation.insertStationToDb(mContext, station, "");
+                }
+                notifyScanStationFound(found.size(), station);
+                from = frequency;
+            }
             mIsNativeScanning = false;
         }
 
         setRds(true);
         if (mIsStopScanCalled) {
             // Received a message to power down FM, or interrupted by a phone
-            // call. Do not return any stations. stationsInShort = null;
-            // if cancel scan, return invalid station -100
-            stationsInShort = new short[] {
+            // call: what was found is in the list already; if cancel scan,
+            // return invalid station -100
+            stations = new int[] {
                 -100
             };
             mIsStopScanCalled = false;
+            return stations;
         }
 
-        if (null != stationsInShort) {
-            int size = stationsInShort.length;
-            stations = new int[size];
-            for (int i = 0; i < size; i++) {
-                stations[i] = stationsInShort[i];
-            }
+        stations = new int[found.size()];
+        for (int i = 0; i < stations.length; i++) {
+            stations[i] = found.get(i);
         }
         return stations;
+    }
+
+    /* A station found and in the list, for the list to show it now, and
+     * where in the band the scan is */
+    private void notifyScanStationFound(int count, int station) {
+        Bundle bundle = new Bundle(3);
+        bundle.putInt(FmListener.CALLBACK_FLAG, FmListener.MSGID_SCAN_STATION_FOUND);
+        bundle.putInt(FmListener.KEY_STATION_NUM, count);
+        bundle.putInt(FmListener.KEY_SCAN_STATION, station);
+        notifyCurrentActivityStateChanged(bundle);
     }
 
     /**

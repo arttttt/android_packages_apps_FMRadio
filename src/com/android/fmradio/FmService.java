@@ -130,8 +130,8 @@ public class FmService extends Service implements FmRecorder.OnRecorderStateChan
     private String mTargetClassName = "com.android.fmradio.FmMainActivity";
     // RDS thread use to receive the information send by station
     private Thread mRdsThread = null;
-    // record whether RDS thread exit
-    private boolean mIsRdsThreadExit = false;
+    // How long to wait for the RDS thread to end: one poll and its reads
+    private static final long RDS_THREAD_JOIN_MS = 2000;
 
     // State variables
     // Record whether FM is in native scan state
@@ -724,12 +724,12 @@ public class FmService extends Service implements FmRecorder.OnRecorderStateChan
         setRds(false);
         enableFmAudio(false);
 
+        // The RDS thread reads the tuner: it is gone before the tuner is
+        if (isRdsSupported()) {
+            stopRdsThread();
+        }
+
         if (!FmNative.powerDown(0)) {
-
-            if (isRdsSupported()) {
-                stopRdsThread();
-            }
-
             if (mWakeLock.isHeld()) {
                 mWakeLock.release();
             }
@@ -739,10 +739,6 @@ public class FmService extends Service implements FmRecorder.OnRecorderStateChan
         }
         // activity used for update powerdown menu
         mPowerStatus = POWER_DOWN;
-
-        if (isRdsSupported()) {
-            stopRdsThread();
-        }
 
         if (mWakeLock.isHeld()) {
             mWakeLock.release();
@@ -1647,16 +1643,14 @@ public class FmService extends Service implements FmRecorder.OnRecorderStateChan
      * Start RDS thread to update RDS information
      */
     private void startRdsThread() {
-        mIsRdsThreadExit = false;
         if (null != mRdsThread) {
             return;
         }
+        // Each thread runs until it is interrupted: a flag shared between
+        // threads let an old one run on beside a new one
         mRdsThread = new Thread() {
             public void run() {
-                while (true) {
-                    if (mIsRdsThreadExit) {
-                        break;
-                    }
+                while (!isInterrupted()) {
 
                     int iRdsEvents = FmNative.readRds();
                     if (iRdsEvents != 0) {
@@ -1736,7 +1730,7 @@ public class FmService extends Service implements FmRecorder.OnRecorderStateChan
                         final int hundredMillisecond = 500;
                         Thread.sleep(hundredMillisecond);
                     } catch (InterruptedException e) {
-                        e.printStackTrace();
+                        break;
                     }
                 }
             }
@@ -1745,12 +1739,20 @@ public class FmService extends Service implements FmRecorder.OnRecorderStateChan
     }
 
     /**
-     * Stop RDS thread to stop listen station RDS change
+     * Stop RDS thread to stop listen station RDS change. Returns once the
+     * thread has ended, so the tuner can go after it.
      */
     private void stopRdsThread() {
         if (null != mRdsThread) {
-            // Must call closedev after stopRDSThread.
-            mIsRdsThreadExit = true;
+            mRdsThread.interrupt();
+            try {
+                mRdsThread.join(RDS_THREAD_JOIN_MS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            if (mRdsThread.isAlive()) {
+                Log.w(TAG, "stopRdsThread, RDS thread still running");
+            }
             mRdsThread = null;
         }
     }

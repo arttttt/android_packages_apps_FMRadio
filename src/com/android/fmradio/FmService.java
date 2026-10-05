@@ -725,9 +725,7 @@ public class FmService extends Service implements FmRecorder.OnRecorderStateChan
         enableFmAudio(false);
 
         // The RDS thread reads the tuner: it is gone before the tuner is
-        if (isRdsSupported()) {
-            stopRdsThread();
-        }
+        stopRdsThread();
 
         if (!FmNative.powerDown(0)) {
             if (mWakeLock.isHeld()) {
@@ -1569,9 +1567,7 @@ public class FmService extends Service implements FmRecorder.OnRecorderStateChan
     public void onDestroy() {
         setMute(true);
         // stop rds first, avoid blocking other native method
-        if (isRdsSupported()) {
-            stopRdsThread();
-        }
+        stopRdsThread();
         unregisterFmBroadcastReceiver();
         unregisterVolumeChangedReceiver();
         unregisterSdcardListener();

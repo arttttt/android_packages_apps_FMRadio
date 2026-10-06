@@ -107,6 +107,13 @@ public class FmNative {
     static native short readRds();
 
     /**
+     * Get the station's RDS PI code
+     *
+     * @return The PI code, 0 until known
+     */
+    static native int getPi();
+
+    /**
      * Get program service(program name)
      *
      * @return The program name

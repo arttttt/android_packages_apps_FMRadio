@@ -45,7 +45,17 @@ public class FmStation {
         Station.STATION_NAME,
         Station.PROGRAM_SERVICE,
         Station.RADIO_TEXT,
+        Station.PI,
     };
+
+    /*
+     * The station a frequency carries, by its RDS PI code: one station on
+     * several frequencies (its alternative ones) is one favorite. A row
+     * with no PI known (0) is only itself.
+     */
+    private static final String SAME_STATION = Station.FREQUENCY + "=? OR ("
+            + Station.PI + "<>0 AND " + Station.PI + "=(SELECT " + Station.PI
+            + " FROM " + FmProvider.TABLE_NAME + " WHERE " + Station.FREQUENCY + "=?))";
 
     /**
      * This class provider the columns of StationList table
@@ -82,6 +92,12 @@ public class FmStation {
          * <P>Type: TEXT</P>
          */
         public static final String RADIO_TEXT = "radio_text";
+
+        /**
+         * The station's RDS PI code, 0 if not known
+         * <P>Type: INTEGER</P>
+         */
+        public static final String PI = "pi";
     }
 
     /**
@@ -274,14 +290,15 @@ public class FmStation {
         boolean isFavorite = false;
         Cursor cursor = null;
         try {
+            // the station on any of its frequencies
             cursor = context.getContentResolver().query(
                 Station.CONTENT_URI,
                 new String[] { Station.IS_FAVORITE },
-                Station.FREQUENCY + "=?",
-                new String[] { String.valueOf(frequency) },
+                Station.IS_FAVORITE + ">0 AND (" + SAME_STATION + ")",
+                new String[] { String.valueOf(frequency), String.valueOf(frequency) },
                 null);
             if (cursor != null && cursor.moveToFirst()) {
-                isFavorite = cursor.getInt(0) > 0;
+                isFavorite = true;
             }
         } finally {
             if (cursor != null) {
@@ -317,11 +334,60 @@ public class FmStation {
         ContentValues values = new ContentValues(1);
         values.put(Station.IS_FAVORITE, false);
         values.put(Station.STATION_NAME, "");
+        // the station on any of its frequencies
         context.getContentResolver().update(
                 Station.CONTENT_URI,
                 values,
+                Station.IS_FAVORITE + ">0 AND (" + SAME_STATION + ")",
+                new String[] { String.valueOf(frequency), String.valueOf(frequency) });
+    }
+
+    /**
+     * Get the RDS PI code of the station on a frequency
+     *
+     * @param context The context
+     * @param frequency The station frequency
+     *
+     * @return The PI code, 0 if not known
+     */
+    public static int getStationPi(Context context, int frequency) {
+        int pi = 0;
+        Cursor cursor = null;
+        try {
+            cursor = context.getContentResolver().query(
+                Station.CONTENT_URI,
+                new String[] { Station.PI },
                 Station.FREQUENCY + "=?",
-                new String[] { String.valueOf(frequency) });
+                new String[] { String.valueOf(frequency) },
+                null);
+            if (cursor != null && cursor.moveToFirst()) {
+                pi = cursor.getInt(0);
+            }
+        } finally {
+            if (cursor != null) {
+                cursor.close();
+            }
+        }
+        return pi;
+    }
+
+    /**
+     * Store the RDS PI code of the station on a frequency, adding the
+     * station if it is not in the database
+     *
+     * @param context The context
+     * @param frequency The station frequency
+     * @param pi The PI code
+     */
+    public static void setStationPi(Context context, int frequency, int pi) {
+        ContentValues values = new ContentValues(2);
+        values.put(Station.PI, pi);
+        if (isStationExist(context, frequency)) {
+            updateStationToDb(context, frequency, values);
+        } else {
+            values.put(Station.FREQUENCY, frequency);
+            insertStationToDb(context, values);
+        }
     }
 
     /**

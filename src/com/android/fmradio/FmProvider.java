@@ -42,9 +42,9 @@ public class FmProvider extends ContentProvider {
     // database name
     private static final String DATABASE_NAME = "FmRadio.db";
     // database version
-    private static final int DATABASE_VERSION = 1;
+    private static final int DATABASE_VERSION = 2;
     // table name
-    private static final String TABLE_NAME = "StationList";
+    static final String TABLE_NAME = "StationList";
 
     // URI match code
     private static final int STATION_FREQ = 1;
@@ -90,7 +90,8 @@ public class FmProvider extends ContentProvider {
                             + FmStation.Station.IS_FAVORITE + " INTEGER DEFAULT 0,"
                             + FmStation.Station.STATION_NAME + " TEXT,"
                             + FmStation.Station.PROGRAM_SERVICE + " TEXT,"
-                            + FmStation.Station.RADIO_TEXT + " TEXT"
+                            + FmStation.Station.RADIO_TEXT + " TEXT,"
+                            + FmStation.Station.PI + " INTEGER DEFAULT 0"
                             + ");"
                     );
         }
@@ -104,11 +105,13 @@ public class FmProvider extends ContentProvider {
          */
         @Override
         public void onUpgrade(SQLiteDatabase db, int oldVersion, int newVersion) {
-            // TODO: reimplement this when dB version changes
             Log.i(TAG, "onUpgrade, upgrading database from version " + oldVersion + " to "
-                    + newVersion + ", which will destroy all old data");
-            db.execSQL("DROP TABLE IF EXISTS " + TABLE_NAME);
-            onCreate(db);
+                    + newVersion);
+            if (oldVersion < 2) {
+                // the stations' PI codes; the stations and favorites are kept
+                db.execSQL("ALTER TABLE " + TABLE_NAME + " ADD COLUMN "
+                        + FmStation.Station.PI + " INTEGER DEFAULT 0");
+            }
         }
     }
 

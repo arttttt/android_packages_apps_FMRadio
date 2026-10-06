@@ -87,6 +87,7 @@ public class FmService extends Service implements FmRecorder.OnRecorderStateChan
 
     // RDS events
     // PS
+    private static final int RDS_EVENT_PI_CODE = 0x0002;
     private static final int RDS_EVENT_PROGRAMNAME = 0x0008;
     // RT
     private static final int RDS_EVENT_LAST_RADIOTEXT = 0x0040;
@@ -1692,6 +1693,17 @@ public class FmService extends Service implements FmRecorder.OnRecorderStateChan
                         Log.d(TAG, "startRdsThread, is rds events: " + iRdsEvents);
                     }
 
+                    if (RDS_EVENT_PI_CODE == (RDS_EVENT_PI_CODE & iRdsEvents)) {
+                        int pi = FmNative.getPi();
+                        if (pi != 0 && pi != FmStation.getStationPi(mContext, mCurrentStation)) {
+                            FmStation.setStationPi(mContext, mCurrentStation, pi);
+                            Bundle bundle = new Bundle(1);
+                            bundle.putInt(FmListener.CALLBACK_FLAG,
+                                    FmListener.LISTEN_PI_CHANGED);
+                            notifyActivityStateChanged(bundle);
+                        }
+                    }
+
                     if (RDS_EVENT_PROGRAMNAME == (RDS_EVENT_PROGRAMNAME & iRdsEvents)) {
                         byte[] bytePS = FmNative.getPs();
                         if (null != bytePS) {
@@ -1776,6 +1788,12 @@ public class FmService extends Service implements FmRecorder.OnRecorderStateChan
      */
     private void onAfSwitched(int station) {
         Log.d(TAG, "onAfSwitched, " + mCurrentStation + " -> " + station);
+        // the chip checked the PI there: the same station, a favorite as
+        // it was, before the UI asks
+        int pi = FmStation.getStationPi(mContext, mCurrentStation);
+        if (pi != 0) {
+            FmStation.setStationPi(mContext, station, pi);
+        }
         mCurrentStation = station;
         FmStation.setCurrentStation(mContext, station);
         updatePlayingNotification();

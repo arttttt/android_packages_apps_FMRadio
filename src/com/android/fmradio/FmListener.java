@@ -32,6 +32,10 @@ public interface FmListener {
     // FM RT information changed
     int LISTEN_RT_CHANGED = 0x00100100;
 
+    // The station's RDS PI code became known: it may be a favorite on
+    // another of its frequencies
+    int LISTEN_PI_CHANGED = 0x00101001;
+
     // FM Record state changed
     int LISTEN_RECORDSTATE_CHANGED = 0x00100101; // 1048833
 

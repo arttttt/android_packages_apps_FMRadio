@@ -305,6 +305,16 @@ public class FmMainActivity extends Activity implements FmFavoriteEditDialog.Edi
                     mScroller.notifyAdatperChange();
                     break;
 
+                case FmListener.LISTEN_PI_CHANGED:
+                    if (FmStation.isFavoriteStation(mContext, mCurrentStation)) {
+                        mButtonAddToFavorite.setImageResource(
+                                R.drawable.btn_fm_favorite_on_selector);
+                    } else {
+                        mButtonAddToFavorite.setImageResource(
+                                R.drawable.btn_fm_favorite_off_selector);
+                    }
+                    break;
+
                 case FmListener.LISTEN_RT_CHANGED:
                     bundle = msg.getData();
                     String rtString = bundle.getString(FmListener.KEY_RT_INFO);

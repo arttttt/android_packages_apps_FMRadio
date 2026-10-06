@@ -1750,11 +1750,7 @@ public class FmService extends Service implements FmRecorder.OnRecorderStateChan
                                 // if the new frequency is not equal to current
                                 // frequency.
                                 if (mCurrentStation != iFreq) {
-                                    if (!mIsScanning && !mIsSeeking) {
-                                        Log.d(TAG, "startRdsThread, seek or scan not going,"
-                                                + "need to tune here");
-                                        tuneStationAsync(FmUtils.computeFrequency(iFreq));
-                                    }
+                                    onAfSwitched(iFreq);
                                 }
                             }
                         }
@@ -1771,6 +1767,25 @@ public class FmService extends Service implements FmRecorder.OnRecorderStateChan
             }
         };
         mRdsThread.start();
+    }
+
+    /*
+     * The driver switched to the station's alternative frequency by itself
+     * (RDS AF): the tuner is there already, so nothing is tuned; the app
+     * only takes the frequency for its own.
+     */
+    private void onAfSwitched(int station) {
+        Log.d(TAG, "onAfSwitched, " + mCurrentStation + " -> " + station);
+        mCurrentStation = station;
+        FmStation.setCurrentStation(mContext, station);
+        updatePlayingNotification();
+
+        Bundle bundle = new Bundle(3);
+        bundle.putInt(FmListener.CALLBACK_FLAG, FmListener.MSGID_TUNE_FINISHED);
+        bundle.putBoolean(FmListener.KEY_IS_TUNE, true);
+        bundle.putFloat(FmListener.KEY_TUNE_TO_STATION,
+                FmUtils.computeFrequency(station));
+        notifyActivityStateChanged(bundle);
     }
 
     /**

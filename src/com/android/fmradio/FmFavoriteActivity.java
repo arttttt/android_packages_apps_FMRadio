@@ -77,6 +77,8 @@ public class FmFavoriteActivity extends Activity {
     private OnExitListener mExitListener = null;
 
     private MyFavoriteAdapter mMyAdapter;
+    // the list was brought to the current station, once, as it opened
+    private boolean mScrolledToCurrent = false;
 
     private ProgressBar mSearchProgress = null;
     private View mScanPanel = null;
@@ -115,6 +117,7 @@ public class FmFavoriteActivity extends Activity {
         mScanProgress.setMax(FmUtils.getHighestStation() - FmUtils.getLowestStation());
         mLvFavorites.setAdapter(mMyAdapter); // set adapter
         mMyAdapter.swipResult(getData());
+        scrollToCurrentStation();
 
         mLvFavorites.setOnItemClickListener(new AdapterView.OnItemClickListener() {
             /**
@@ -246,7 +249,33 @@ public class FmFavoriteActivity extends Activity {
             mInflater = LayoutInflater.from(context);
         }
 
+        // the station playing, highlighted
+        private int mCurrentStation = -1;
+
+        /**
+         * The position of the station nearest a frequency
+         *
+         * @param frequency The frequency
+         * @return The position, -1 for an empty list
+         */
+        public int getPositionNear(int frequency) {
+            int best = -1;
+            int bestDistance = Integer.MAX_VALUE;
+            if (mCursor != null && mCursor.moveToFirst()) {
+                int column = mCursor.getColumnIndex(FmStation.Station.FREQUENCY);
+                do {
+                    int distance = Math.abs(mCursor.getInt(column) - frequency);
+                    if (distance < bestDistance) {
+                        bestDistance = distance;
+                        best = mCursor.getPosition();
+                    }
+                } while (mCursor.moveToNext());
+            }
+            return best;
+        }
+
         public void swipResult(Cursor cursor) {
+            mCurrentStation = FmStation.getCurrentStation(mContext);
             if (null != mCursor) {
                 mCursor.close();
             }
@@ -317,6 +346,10 @@ public class FmFavoriteActivity extends Activity {
 
                 viewHolder.mStationFreqView.setText(FmUtils.formatStation(stationFreq));
                 viewHolder.mStationNameView.setText(name);
+                int textColor = mContext.getColor(stationFreq == mCurrentStation
+                        ? R.color.station_current_color : R.color.black_color);
+                viewHolder.mStationFreqView.setTextColor(textColor);
+                viewHolder.mStationNameView.setTextColor(textColor);
                 viewHolder.mStationRdsView.setText(rds);
                 if (0 == isFavorite) {
                     viewHolder.mStationTypeView.setImageResource(R.drawable.btn_fm_favorite_off);
@@ -351,6 +384,29 @@ public class FmFavoriteActivity extends Activity {
             }
             return -1;
         }
+    }
+
+    /**
+     * Bring the list to the station playing, once, as it opens: a third of
+     * the way down, with the stations around it in sight. Later refills
+     * (a star tapped, a scan) leave the list where it is.
+     */
+    private void scrollToCurrentStation() {
+        if (mScrolledToCurrent) {
+            return;
+        }
+        final int position = mMyAdapter.getPositionNear(
+                FmStation.getCurrentStation(mContext));
+        if (position < 0) {
+            return;
+        }
+        mScrolledToCurrent = true;
+        mLvFavorites.post(new Runnable() {
+            @Override
+            public void run() {
+                mLvFavorites.setSelectionFromTop(position, mLvFavorites.getHeight() / 3);
+            }
+        });
     }
 
     /**
@@ -576,6 +632,7 @@ public class FmFavoriteActivity extends Activity {
                 } else {
                     // TODO it's on UI thread, change to sub thread
                     mMyAdapter.swipResult(getData());
+                    scrollToCurrentStation();
                 }
                 refreshMenuItem(!isScan);
             }

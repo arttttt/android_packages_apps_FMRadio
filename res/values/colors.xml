@@ -29,4 +29,6 @@
     <color name="actionbar_overflow_title_disabled_color">#33000000</color>
     <!-- FM main page text color -->
     <color name="text_fm_color">#CFD8DC</color>
+    <!-- the station playing, in the station list: the favorite star's -->
+    <color name="station_current_color">#FF4081</color>
 </resources>

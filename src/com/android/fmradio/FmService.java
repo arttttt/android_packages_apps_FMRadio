@@ -64,6 +64,7 @@ import android.util.Log;
 
 import com.android.fmradio.FmStation.Station;
 
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -1707,7 +1708,7 @@ public class FmService extends Service implements FmRecorder.OnRecorderStateChan
                     if (RDS_EVENT_PROGRAMNAME == (RDS_EVENT_PROGRAMNAME & iRdsEvents)) {
                         byte[] bytePS = FmNative.getPs();
                         if (null != bytePS) {
-                            String ps = new String(bytePS).trim();
+                            String ps = new String(bytePS, StandardCharsets.UTF_8).trim();
                             if (!mPsString.equals(ps)) {
                                 updatePlayingNotification();
                             }
@@ -1729,7 +1730,7 @@ public class FmService extends Service implements FmRecorder.OnRecorderStateChan
                     if (RDS_EVENT_LAST_RADIOTEXT == (RDS_EVENT_LAST_RADIOTEXT & iRdsEvents)) {
                         byte[] byteLRText = FmNative.getLrText();
                         if (null != byteLRText) {
-                            String rds = new String(byteLRText).trim();
+                            String rds = new String(byteLRText, StandardCharsets.UTF_8).trim();
                             if (!mRtTextString.equals(rds)) {
                                 updatePlayingNotification();
                             }

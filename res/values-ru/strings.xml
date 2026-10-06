@@ -46,6 +46,10 @@
     <string name="station_title">Радиостанции</string>
     <string name="station_searching_tips">Поиск станций</string>
     <string name="station_searching_at">Поиск станций: %1$s МГц · найдено %2$d</string>
+    <string name="region_title">Регион</string>
+    <string name="region_world">Европа, Африка, Азия, Океания (87,5–108 МГц)</string>
+    <string name="region_americas">Америка, Корея, Филиппины (87,5–107,9 МГц, 200 кГц)</string>
+    <string name="region_japan">Япония (76–95 МГц)</string>
     <string name="station_empty_text">Станции не найдены</string>
     <string name="minutes_label">м.</string>
     <string name="seconds_label">с.</string>

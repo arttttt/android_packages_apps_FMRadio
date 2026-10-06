@@ -82,6 +82,11 @@
     <!-- Over the station list while a scan runs: the frequency it has got to,
          and how many stations it has found -->
     <string name="station_searching_at">Getting stations: %1$s MHz · %2$d found</string>
+    <!-- The FM band of a part of the world -->
+    <string name="region_title">Region</string>
+    <string name="region_world">Europe, Africa, Asia, Oceania (87.5–108 MHz)</string>
+    <string name="region_americas">Americas, Korea, Philippines (87.5–107.9 MHz, 200 kHz)</string>
+    <string name="region_japan">Japan (76–95 MHz)</string>
     <!-- The tips shown when we refresh in station list but no stations found [CHAR LIMIT=50] -->
     <string name="station_empty_text">No stations found</string>
     <!-- It means "minutes" that shown in record screen [CHAR LIMIT=2] -->

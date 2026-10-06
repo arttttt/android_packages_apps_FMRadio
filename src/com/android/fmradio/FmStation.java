@@ -228,7 +228,9 @@ public class FmStation {
     public static int getCurrentStation(Context context) {
         SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
         int currentStation = prefs.getInt(CURRENT_STATION, FmUtils.DEFAULT_STATION);
-        return currentStation;
+        // in the region's band: it may have changed since
+        FmRegion.get(context);
+        return FmUtils.clampStation(currentStation);
     }
 
     /**

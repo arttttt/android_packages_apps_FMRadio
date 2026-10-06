@@ -42,14 +42,9 @@ public class FmUtils {
     // FM station variables
     public static final int DEFAULT_STATION = 1000;
     public static final float DEFAULT_STATION_FLOAT = computeFrequency(DEFAULT_STATION);
-    // maximum station frequency
-    private static final int HIGHEST_STATION = 1080;
-    // minimum station frequency
-    private static final int LOWEST_STATION = 875;
-    // station step
-    private static final int STEP = 1;
-    // convert rate
+    // convert rate: stations are in 100 kHz
     private static final int CONVERT_RATE = 10;
+    private static final int KHZ_PER_STATION = 1000 / CONVERT_RATE;
 
     // minimum storage space for record (512KB).
     // Need to check before starting recording and during recording to avoid
@@ -69,7 +64,7 @@ public class FmUtils {
      *         false
      */
     public static boolean isValidStation(int station) {
-        boolean isValid = (station >= LOWEST_STATION && station <= HIGHEST_STATION);
+        boolean isValid = (station >= getLowestStation() && station <= getHighestStation());
         return isValid;
     }
 
@@ -81,9 +76,9 @@ public class FmUtils {
      * @return station The frequency after increased
      */
     public static int computeIncreaseStation(int station) {
-        int result = station + STEP;
-        if (result > HIGHEST_STATION) {
-            result = LOWEST_STATION;
+        int result = station + getStep();
+        if (result > getHighestStation()) {
+            result = getLowestStation();
         }
         return result;
     }
@@ -96,9 +91,9 @@ public class FmUtils {
      * @return station The frequency after decreased
      */
     public static int computeDecreaseStation(int station) {
-        int result = station - STEP;
-        if (result < LOWEST_STATION) {
-            result = HIGHEST_STATION;
+        int result = station - getStep();
+        if (result < getLowestStation()) {
+            result = getHighestStation();
         }
         return result;
     }
@@ -133,12 +128,31 @@ public class FmUtils {
     }
 
     /**
+     * The region's step between stations
+     *
+     * @return The step, in stations
+     */
+    public static int getStep() {
+        return FmRegion.current().stepKhz / KHZ_PER_STATION;
+    }
+
+    /**
+     * A station within the region's band: the nearest of its ends if not
+     *
+     * @param station The station
+     * @return The station, in the band
+     */
+    public static int clampStation(int station) {
+        return Math.max(getLowestStation(), Math.min(getHighestStation(), station));
+    }
+
+    /**
      * The top of the band
      *
      * @return The highest station
      */
     public static int getHighestStation() {
-        return HIGHEST_STATION;
+        return FmRegion.current().highKhz / KHZ_PER_STATION;
     }
 
     /**
@@ -147,7 +161,7 @@ public class FmUtils {
      * @return The lowest station
      */
     public static int getLowestStation() {
-        return LOWEST_STATION;
+        return FmRegion.current().lowKhz / KHZ_PER_STATION;
     }
 
     public static float computeFrequency(int station) {

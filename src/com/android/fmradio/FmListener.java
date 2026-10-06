@@ -106,6 +106,8 @@ public interface FmListener {
     int MSGID_AUDIOFOCUS_CHANGED = 30;
     // A scan found a station, put in the station list; the scan goes on
     int MSGID_SCAN_STATION_FOUND = 34;
+    // another region: its band from now on
+    int MSGID_REGION_CHANGED = 35;
 
     int NOT_AUDIO_FOCUS = 33;
 

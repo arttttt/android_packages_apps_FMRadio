@@ -48,6 +48,12 @@ public class FmNative {
     static native boolean powerUp(float frequency);
 
     /**
+     * The band, for the next powerUp: its limits and step, in kHz, and the
+     * de-emphasis, in microseconds
+     */
+    static native void setBand(int lowKhz, int highKhz, int stepKhz, int deemphasisUs);
+
+    /**
      * Power down FM
      *
      * @param type (0, FMRadio; 1, FMTransimitter)

@@ -658,6 +658,12 @@ public class FmService extends Service implements FmRecorder.OnRecorderStateChan
             openDevice();
         }
 
+        // the region's band, and a frequency in it
+        FmRegion region = FmRegion.get(mContext);
+        FmNative.setBand(region.lowKhz, region.highKhz, region.stepKhz, region.deemphasisUs);
+        frequency = FmUtils.computeFrequency(
+                FmUtils.clampStation(FmUtils.computeStationRounded(frequency)));
+
         if (!FmNative.powerUp(frequency)) {
             mPowerStatus = POWER_DOWN;
             return false;
@@ -691,6 +697,44 @@ public class FmService extends Service implements FmRecorder.OnRecorderStateChan
         setMute(false);
 
         return (mPowerStatus == POWER_UP);
+    }
+
+    /**
+     * Another region: its band from now on. A radio playing is turned off
+     * and on again in it; the stations a scan found are the old band's, and
+     * go (the favorites stay).
+     *
+     * @param region The region
+     */
+    public void setRegionAsync(FmRegion region) {
+        Message msg = mFmServiceHandler.obtainMessage(FmListener.MSGID_REGION_CHANGED, region);
+        mFmServiceHandler.sendMessage(msg);
+    }
+
+    private void handleRegionChanged(FmRegion region) {
+        boolean wasOn = mPowerStatus == POWER_UP;
+
+        if (region == FmRegion.get(mContext)) {
+            return;
+        }
+        Log.d(TAG, "handleRegionChanged, " + FmRegion.get(mContext) + " -> " + region);
+        if (wasOn) {
+            powerDown();
+        }
+        FmRegion.set(mContext, region);
+        FmStation.cleanSearchedStations(mContext);
+        mCurrentStation = FmUtils.clampStation(mCurrentStation);
+        FmStation.setCurrentStation(mContext, mCurrentStation);
+
+        if (wasOn) {
+            Bundle bundle = new Bundle(1);
+            bundle.putFloat(FM_FREQUENCY, FmUtils.computeFrequency(mCurrentStation));
+            handlePowerUp(bundle);
+        } else {
+            Bundle bundle = new Bundle(1);
+            bundle.putInt(FmListener.CALLBACK_FLAG, FmListener.MSGID_REGION_CHANGED);
+            notifyActivityStateChanged(bundle);
+        }
     }
 
     /**
@@ -1289,6 +1333,7 @@ public class FmService extends Service implements FmRecorder.OnRecorderStateChan
     public void onCreate() {
         super.onCreate();
         mContext = getApplicationContext();
+        FmRegion.get(mContext);
         mAudioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
         mActivityManager = (ActivityManager) getSystemService(Context.ACTIVITY_SERVICE);
         PowerManager powerManager = (PowerManager) getSystemService(Context.POWER_SERVICE);
@@ -2550,6 +2595,10 @@ public class FmService extends Service implements FmRecorder.OnRecorderStateChan
                     break;
 
                 // power down
+                case FmListener.MSGID_REGION_CHANGED:
+                    handleRegionChanged((FmRegion) msg.obj);
+                    break;
+
                 case FmListener.MSGID_POWERDOWN_FINISHED:
                     handlePowerDown();
                     break;

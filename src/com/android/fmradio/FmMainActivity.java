@@ -52,6 +52,8 @@ import android.widget.Toolbar;
 
 import com.android.fmradio.FmStation.Station;
 import com.android.fmradio.dialogs.FmFavoriteEditDialog;
+
+import android.app.AlertDialog;
 import com.android.fmradio.views.FmScroller;
 import com.android.fmradio.views.FmSnackBar;
 import com.android.fmradio.views.FmScroller.EventListener;
@@ -305,6 +307,12 @@ public class FmMainActivity extends Activity implements FmFavoriteEditDialog.Edi
                     mScroller.notifyAdatperChange();
                     break;
 
+                case FmListener.MSGID_REGION_CHANGED:
+                    // the radio is off: only the station shown moves into the band
+                    mCurrentStation = mService.getFrequency();
+                    refreshStationUI(mCurrentStation);
+                    break;
+
                 case FmListener.LISTEN_PI_CHANGED:
                     if (FmStation.isFavoriteStation(mContext, mCurrentStation)) {
                         mButtonAddToFavorite.setImageResource(
@@ -486,6 +494,7 @@ public class FmMainActivity extends Activity implements FmFavoriteEditDialog.Edi
         setContentView(R.layout.main);
         mFragmentManager = getFragmentManager();
         mContext = getApplicationContext();
+        FmRegion.get(mContext);
 
         initUiComponent();
         registerButtonClickListener();
@@ -802,6 +811,10 @@ public class FmMainActivity extends Activity implements FmFavoriteEditDialog.Edi
                 startActivityForResult(recordIntent, REQUEST_CODE_RECORDING);
                 break;
 
+            case R.id.fm_region:
+                showRegionDialog();
+                break;
+
             case R.id.fm_record_list:
                 Intent playMusicIntent = new Intent(Intent.ACTION_VIEW);
                 int playlistId = FmRecorder.getPlaylistId(mContext);
@@ -822,6 +835,29 @@ public class FmMainActivity extends Activity implements FmFavoriteEditDialog.Edi
                 break;
         }
         return super.onOptionsItemSelected(item);
+    }
+
+    /**
+     * The regions to pick from, the one in use checked: a pick goes to the
+     * service, which moves the radio to the region's band
+     */
+    private void showRegionDialog() {
+        final FmRegion[] regions = FmRegion.values();
+        String[] names = new String[regions.length];
+        for (int i = 0; i < regions.length; i++) {
+            names[i] = getString(regions[i].nameRes);
+        }
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.region_title)
+                .setSingleChoiceItems(names, FmRegion.get(mContext).ordinal(),
+                        (dialog, which) -> {
+                            dialog.dismiss();
+                            if (mService != null) {
+                                mService.setRegionAsync(regions[which]);
+                            }
+                        })
+                .setNegativeButton(android.R.string.cancel, null)
+                .show();
     }
 
     /**
